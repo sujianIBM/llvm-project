@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+include "llvm/TableGen/SetTheory.td"
+
 // Return type or argument type of library function.
 class FuncArgType {
   string Name = NAME;
@@ -41,4 +43,33 @@ class TargetLibCall<string Str, FuncArgType RetType,
   string String = Str;
   FuncArgType ReturnType = RetType;
   list<FuncArgType> ArgumentTypes = ArgTypes;
+}
+
+// Predicate for whether a libcall should be used for the current target.
+class TargetLibCallPredicate<code cond> {
+  code Cond = cond;
+}
+def AlwaysAvailable : TargetLibCallPredicate<[{}]>;
+
+class TargetLibCallCustomName<TargetLibCall LibCall, string Name> {
+  TargetLibCall Provides = LibCall;
+  string CustomName = Name;
+}
+
+// Define a set of TargetLibCall / TargetLibCallCustomName
+// with a predicate.
+class TargetLibCalls<dag FuncList,
+                     TargetLibCallPredicate Pred = AlwaysAvailable> {
+  TargetLibCallPredicate AvailabilityPredicate = Pred;
+  dag MemberList = FuncList;
+}
+
+// Define sets of libcalls to set available/unavailable/availableWithCustomName
+// for a target.
+// When IsAvailable is true, "TLI.disableAllFunctions();" will be called at first.
+class TargetLibrary<TargetLibCallPredicate Pred, dag FuncList, dag NameList> {
+  TargetLibCallPredicate TriplePred = Pred;
+  TargetLibCalls LibCallList = TargetLibCalls<FuncList>;
+  TargetLibCalls CustomNameList = TargetLibCalls<NameList>;
+  bit IsAvailable = false;
 }

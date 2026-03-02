@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "SequenceToOffsetTable.h"
+#include "TargetLibraryInfo.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -16,6 +17,7 @@
 #include "llvm/TableGen/SetTheory.h"
 #include "llvm/TableGen/StringToOffsetTable.h"
 #include "llvm/TableGen/TableGenBackend.h"
+#include <cassert>
 #include <cstddef>
 
 #define DEBUG_TYPE "target-library-info-emitter"
@@ -32,6 +34,7 @@ private:
   void emitTargetLibraryInfoEnum(raw_ostream &OS) const;
   void emitTargetLibraryInfoStringTable(raw_ostream &OS) const;
   void emitTargetLibraryInfoSignatureTable(raw_ostream &OS) const;
+  void emitTargetLibraryInfoInitializeLibCalls(raw_ostream &OS) const;
 
 public:
   TargetLibraryInfoEmitter(const RecordKeeper &R);
@@ -168,12 +171,125 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoSignatureTable(
   OS << "};\n";
 }
 
+void TargetLibraryInfoEmitter::emitTargetLibraryInfoInitializeLibCalls(
+    raw_ostream &OS) const {
+  IfDefEmitter IfDef(OS, "GET_TARGET_LIBRARY_INFO_INIT");
+
+  SmallVector<const Record *, 1024> AllLibraries(
+      Records.getAllDerivedDefinitions("TargetLibrary"));
+  sort(AllLibraries, [](const Record *A, const Record *B) {
+    return A->getID() < B->getID();
+  });
+  const Record *AlwaysAvailable = Records.getDef("AlwaysAvailable");
+
+  for (const Record *R : AllLibraries) {
+    AvailabilityPred TopLevelPredicate(R->getValueAsDef("TriplePred"));
+
+    unsigned IndentDepth = 2;
+    if (!TopLevelPredicate.isAlwaysAvailable()) {
+      OS << indent(IndentDepth);
+      TopLevelPredicate.emitIf(OS);
+      IndentDepth += 2;
+    }
+
+    bool IsAvailable = R->getValueAsBit("IsAvailable");
+    if (IsAvailable) {
+      OS << indent(IndentDepth)
+	 << "TLI.disableAllFunctions();\n";
+    }
+
+    SetTheory Sets;
+    DenseMap<const Record *, const Record *> Libcall2Pred;
+    DenseMap<const Record *, const Record *> LibcallCustomName2Pred;
+    Sets.addExpander("TargetLibCalls",
+		     std::make_unique<TargetLibcallPredicateExpander>(
+		         Libcall2Pred, LibcallCustomName2Pred));
+    const SetTheory::RecVec *Libcalls =
+	Sets.expand(R->getValueAsDef("LibCallList"));
+    const SetTheory::RecVec *CustomNames =
+	Sets.expand(R->getValueAsDef("CustomNameList"));
+
+    SetVector<const Record *> PredicateSet;
+    DenseMap<const Record *,
+             std::pair<std::vector<const Record *>,
+	               std::vector<const Record *>>> Pred2Libcalls;
+
+    auto MapPred = [&PredicateSet, &Pred2Libcalls, &AlwaysAvailable](
+		       const SetTheory::RecVec *Libcalls,
+	               DenseMap<const Record *, const Record *> &Libcall2Pred,
+		       bool IsDefault) {
+      if (!Libcalls)
+	return;
+
+      for (const Record *Libcall : *Libcalls) {
+	auto It = Libcall2Pred.find(Libcall);
+	const Record *Pred = (It == Libcall2Pred.end()) ? AlwaysAvailable : It->second;
+
+	auto &Target = Pred2Libcalls[Pred];
+	PredicateSet.insert(Pred);
+	auto &TargetLibcalls = IsDefault ? Target.first : Target.second;
+	TargetLibcalls.push_back(Libcall);
+      }
+    };
+
+    MapPred(Libcalls, Libcall2Pred, true);
+    MapPred(CustomNames, LibcallCustomName2Pred, false);
+
+    SmallVector<const Record *, 0> Predicates = PredicateSet.takeVector();
+    for (const Record *Pred : Predicates) {
+      auto It = Pred2Libcalls.find(Pred);
+
+      if (It == Pred2Libcalls.end())
+	llvm::errs() << "Cant find Pred!\n";
+      AvailabilityPred SubsetPred(Pred);
+      if (!SubsetPred.isAlwaysAvailable()) {
+	OS << indent(IndentDepth);
+	SubsetPred.emitIf(OS);
+	IndentDepth += 2;
+      }
+
+      // emit TLI.setAvailable(LibFunc_xxx); / TLI.setUnavailable(LibFunc_xxx);
+      for (const Record *R : It->second.first) {
+        OS << indent(IndentDepth)
+           << (IsAvailable ? "TLI.setAvailable(" : "TLI.setUnavailable(")
+	   << "LibFunc_" << R->getName() << ");\n";
+      }
+
+      // emit TLI.setAvailableWithName(LibFunc_xxx, "xxx");
+      for (const Record *R : It->second.second) {
+	const Record *Provides = R->getValueAsDef("Provides");
+	if (!Provides)
+	  PrintError(R, "TargetLibCallCustomName does not have a TargetLibCall");
+	else {
+	  OS << indent(IndentDepth)
+             << "TLI.setAvailableWithName(LibFunc_" << Provides->getName()
+	     << ", " << "\"" << R->getValueAsString("CustomName") << "\");\n";
+	}
+      }
+
+      if (!SubsetPred.isAlwaysAvailable()) {
+	IndentDepth -= 2;
+	OS << indent(IndentDepth);
+        SubsetPred.emitEndIf(OS);
+      }
+    }
+
+    if (!TopLevelPredicate.isAlwaysAvailable()) {
+      IndentDepth -= 2;
+      OS << indent(IndentDepth);
+      TopLevelPredicate.emitEndIf(OS);
+    }
+    OS << '\n';
+  }
+}
+
 void TargetLibraryInfoEmitter::run(raw_ostream &OS) {
   emitSourceFileHeader("Target Library Info Source Fragment", OS, Records);
 
   emitTargetLibraryInfoEnum(OS);
   emitTargetLibraryInfoStringTable(OS);
   emitTargetLibraryInfoSignatureTable(OS);
+  emitTargetLibraryInfoInitializeLibCalls(OS);
 }
 
 static TableGen::Emitter::OptClass<TargetLibraryInfoEmitter>
