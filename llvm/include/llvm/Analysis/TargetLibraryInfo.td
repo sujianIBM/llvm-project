@@ -1695,3 +1695,575 @@ def wcslen : TargetLibCall<"wcslen", SizeT, [Ptr]>;
 
 /// ssize_t write(int fildes, const void *buf, size_t nbyte);
 def write : TargetLibCall<"write", SSizeT, [Int, Ptr, SizeT]>;
+
+
+//--------------------------------------------------------------------
+// Set available/unavailable/customname for libcalls
+// under various conditions
+//--------------------------------------------------------------------
+
+defvar EmptyDAG = (add);
+
+// Set IO unlocked variants as unavailable
+// Set them as available per system below
+defvar IOUnlockedSet =
+  (add getc_unlocked, getchar_unlocked, putc_unlocked, putchar_unlocked,
+       fputc_unlocked, fgetc_unlocked, fread_unlocked, fwrite_unlocked,
+       fputs_unlocked, fgets_unlocked);
+
+def IOUnlockedLibrary : TargetLibrary<
+  AlwaysAvailable,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ IOUnlockedSet,
+  /* CustomName */ EmptyDAG>;
+
+// There is really no runtime library on AMDGPU, apart from
+// __kmpc_alloc/free_shared.
+def IsAMDGPU : TargetLibCallPredicate<"T.isAMDGPU()">;
+
+let DisableAll = true in {
+def AMDGPULibrary : TargetLibrary<
+  IsAMDGPU,
+  /* Available */ (add __kmpc_alloc_shared, __kmpc_free_shared),
+  /* UnAvailable */ EmptyDAG,
+  /* CustomName */ EmptyDAG>;
+}
+
+// DXIL does not support libcalls, and disabling them here prevents a number
+// of passes from introducing libcalls into DXIL which would otherwise
+// complicate lowering/legalization
+def IsDXIL : TargetLibCallPredicate<"T.isDXIL()">;
+
+let DisableAll = true in {
+def DXILLibrary : TargetLibrary<
+  IsDXIL,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ EmptyDAG,
+  /* CustomName */ EmptyDAG>;
+}
+
+// memset_pattern{4,8,16} is only available on iOS 3.0 and Mac OS X 10.5 and
+// later. All versions of watchOS support it.
+
+// available IO unlocked variants on Mac OS X
+defvar IOUnlockedMacOSXSet =
+  (add getc_unlocked, getchar_unlocked, putc_unlocked, putchar_unlocked);
+
+defvar MemsetPatternSet =
+  (add memset_pattern4, memset_pattern8, memset_pattern16);
+def IsMacOSX105 : TargetLibCallPredicate<"T.isMacOSXVersionLT(10, 5)">;
+def IsMacOSX : TargetLibCallPredicate<"T.isMacOSX()">;
+
+def MacOSXLibrary : TargetLibrary<
+  IsMacOSX,
+  /* Available */ IOUnlockedMacOSXSet,
+  /* UnAvailable */ (add memrchr,
+                         TargetLibCalls<MemsetPatternSet, IsMacOSX105>),
+  /* CustomName */ EmptyDAG>;
+
+def IsIOS30 : TargetLibCallPredicate<"T.isOSVersionLT(3, 0)">;
+def IsIOS : TargetLibCallPredicate<"!T.isMacOSX() && T.isiOS()">;
+
+def IOSLibrary : TargetLibrary<
+  IsIOS,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add TargetLibCalls<MemsetPatternSet, IsIOS30>),
+  /* CustomName */ EmptyDAG>;
+
+def IsWatchOS : TargetLibCallPredicate<"T.isWatchOS()">;
+
+def WatchOSLibrary : TargetLibrary<
+  IsWatchOS,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ MemsetPatternSet,
+  /* CustomName */ EmptyDAG>;
+
+def NotHasSinCosPiStret : TargetLibCallPredicate<"!hasSinCosPiStret(T)">;
+
+def NotSinCosPiStretLibrary : TargetLibrary<
+  NotHasSinCosPiStret,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add sinpi, sinpif, cospi, cospif,
+                         sincospi_stret, sincospif_stret),
+  /* CustomName */ EmptyDAG>;
+
+def NotHasBCMP : TargetLibCallPredicate<"!hasBcmp(T)">;
+
+def NotHasBCMPLibrary : TargetLibrary<
+  NotHasBCMP,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add bcmp),
+  /* CustomName */ EmptyDAG>;
+
+// x86-32 OSX has a scheme where fwrite and fputs (and some other functions
+// we don't care about) have two versions; on recent OSX, the one we want
+// has a $UNIX2003 suffix. The two implementations are identical except
+// for the return value in some edge cases.  However, we don't want to
+// generate code that depends on the old symbols.
+defvar MacOSXX86NOT107Set =
+  (add TargetLibCallCustomName<fwrite, "fwrite$UNIX2003">,
+       TargetLibCallCustomName<fputs, "fputs$UNIX2003">);
+
+def IsMacOSXX86NOT107 : TargetLibCallPredicate<
+  [{T.isMacOSX() && T.getArch() == Triple::x86 &&
+    !T.isMacOSXVersionLT(10, 7)}]>;
+
+def MacOSXX86NOT107Library : TargetLibrary<
+  IsMacOSXX86NOT107,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ EmptyDAG,
+  /* CustomName */ MacOSXX86NOT107Set>;
+
+// iprintf and friends are only available on XCore, TCE, and Emscripten.
+def NotXcoreTceEmscripten : TargetLibCallPredicate<
+  [{T.getArch() != Triple::xcore && T.getArch() != Triple::tce &&
+    T.getOS() != Triple::Emscripten}]>;
+
+def NotXcoreTceEmscriptenLibrary : TargetLibrary<
+  NotXcoreTceEmscripten,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add iprintf, siprintf, fiprintf),
+  /* CustomName */ EmptyDAG>;
+
+// __small_printf and friends are only available on Emscripten.
+def NotEmscripten : TargetLibCallPredicate<
+  "T.getOS() != Triple::Emscripten">;
+
+def NotEmscriptenLibrary : TargetLibrary<
+  NotEmscripten,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add small_printf, small_sprintf, small_fprintf),
+  /* CustomName */ EmptyDAG>;
+
+// Win32 does not support float C89 math functions, in general.
+defvar FloatC89Set =
+  (add TargetLibCalls<
+         (add acosf, asinf, atan2f, atanf, ceilf, cosf, coshf, expf,
+              floorf, fmodf, hypotf, log10f, logf, modff, powf,
+              remainderf, remquof, fdimf,
+              sinf, sinhf, sqrtf, tanf, tanhf),
+         TargetLibCallPredicate<"!hasPartialFloat">>,
+       TargetLibCalls<
+         (add fabsf),
+         TargetLibCallPredicate<"!isARM">>,
+       frexpf, ldexpf);
+
+// Win32 does not support long double C89 math functions.
+defvar LongDoubleC89Set =
+  (add acosl, asinl, atan2l, atanl, ceill, cosl, coshl, expl,
+       fabsl, floorl, fmodl, frexpl, hypotl, ldexpl, log10l, logl,
+       modfl, powl, remainderl, remquol, fdiml,
+       sinl, sinhl, sqrtl, tanl, tanhl);
+
+// Win32 does not fully support C99 math functions.
+defvar C99MathSet =
+  (add TargetLibCalls<
+         (add acosh, acoshf, asinh, asinhf, atanh, atanhf,
+              cabsf, cbrt, cbrtf, exp2, exp2f, expm1, expm1f,
+              fmax, fmaxf, fmin, fminf,
+              log1p, log1pf, log2, log2f, ilogb, ilogbf,
+              nextafter, nextafterf, nexttoward, nexttowardf,
+              rint, rintf, round, roundf,
+              scalbln, scalblnf, scalblnl, scalbn, scalbnf, scalbnl,
+              trunc, truncf),
+         TargetLibCallPredicate<"!hasPartialC99">>,
+       TargetLibCalls<
+         (add logbf),
+         TargetLibCallPredicate<"!hasPartialC99 && !hasPartialFloat">>);
+defvar C99MathCustomNameSet =
+  (add TargetLibCalls<
+         (add TargetLibCallCustomName<cabs, "_cabs">,
+              TargetLibCallCustomName<copysign, "_copysign">,
+              TargetLibCallCustomName<copysignf, "_copysignf">,
+              TargetLibCallCustomName<logb, "_logb">),
+         TargetLibCallPredicate<"!hasPartialC99">>,
+       TargetLibCalls<
+         (add TargetLibCallCustomName<logbf, "_logbf">),
+         TargetLibCallPredicate<"!hasPartialC99 && hasPartialFloat">>);
+
+// Win32 does not support long double C99 math functions.
+defvar LongDoubleC99Set =
+  (add acoshl, asinhl, atanhl, cabsl, cbrtl, copysignl,
+       exp2l, expm1l, fmaxl, fminl, log1pl, log2l, logbl, ilogbl,
+       nearbyintl, nextafterl, nexttowardl,
+       rintl, roundl, scalblnl, scalbnl, truncl);
+
+// Win32 does not support these functions, but
+// they are generally available on POSIX-compliant systems.
+defvar Win32NotSupport =
+  (add access, chmod, closedir, fdopen, fileno, fseeko, fstat, ftello,
+       gettimeofday, memccpy, mkdir, open, opendir, pclose, popen,
+       read, rmdir, stat, strcasecmp, strncasecmp, unlink, utime, write);
+
+def IsWindowsNotCygMing : TargetLibCallPredicate<
+  "T.isOSWindows() && !T.isOSCygMing()">;
+
+def WindowsNotCygMingLibrary : TargetLibrary<
+  IsWindowsNotCygMing,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add FloatC89Set, LongDoubleC89Set,
+                         C99MathSet, LongDoubleC99Set,
+                         Win32NotSupport),
+  /* CustomName */ C99MathCustomNameSet>;
+
+// These functions aren't available in either MSVC or MinGW environments.
+// MinGW does have ldexpf, but it is a plain wrapper over regular ldexp.
+// Therefore it's not beneficial to transform code to use it, i.e.
+// just pretend that the function is not available.
+defvar WindowsNotCygwinEnvSet =
+  (add bcmp, bcopy, bzero, chown, ctermid,
+       ffs, flockfile, fstatvfs, ftrylockfile, funlockfile,
+       getitimer, getlogin_r, getpwnam, htonl, htons, lchown, lstat,
+       memrchr, ntohl, ntohs, pread, pwrite, readlink, realpath,
+       setitimer, statvfs, stpcpy, stpncpy, times,
+       uname, unsetenv, utimes,
+       ldexpf);
+
+def IsWindowsNotCygwinEnv : TargetLibCallPredicate<
+  "T.isOSWindows() && !T.isWindowsCygwinEnvironment()">;
+
+def WindowsNotCygwinEnvLibrary : TargetLibrary<
+  IsWindowsNotCygwinEnv,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ WindowsNotCygwinEnvSet,
+  /* CustomName */ EmptyDAG>;
+
+// Pick just one set of new/delete variants.
+// MSVC, doesn't have the Itanium new/delete.
+// Not MSVC, assume it's Itanium.
+defvar NonItaniumNewDeleteSet =
+  (add ZdaPv,
+       ZdaPvRKSt9nothrow_t,
+       ZdaPvSt11align_val_t,
+       ZdaPvSt11align_val_tRKSt9nothrow_t,
+       ZdaPvj,
+       ZdaPvjSt11align_val_t,
+       ZdaPvm,
+       ZdaPvmSt11align_val_t,
+       ZdlPv,
+       ZdlPvRKSt9nothrow_t,
+       ZdlPvSt11align_val_t,
+       ZdlPvSt11align_val_tRKSt9nothrow_t,
+       ZdlPvj,
+       ZdlPvjSt11align_val_t,
+       ZdlPvm,
+       ZdlPvmSt11align_val_t,
+       Znaj,
+       ZnajRKSt9nothrow_t,
+       ZnajSt11align_val_t,
+       ZnajSt11align_val_tRKSt9nothrow_t,
+       Znam,
+       ZnamRKSt9nothrow_t,
+       ZnamRKSt9nothrow_t12__hot_cold_t,
+       ZnamSt11align_val_t,
+       ZnamSt11align_val_tRKSt9nothrow_t,
+       Znwj,
+       ZnwjRKSt9nothrow_t,
+       ZnwjSt11align_val_t,
+       ZnwjSt11align_val_tRKSt9nothrow_t,
+       Znwm,
+       ZnwmRKSt9nothrow_t,
+       ZnwmRKSt9nothrow_t12__hot_cold_t,
+       ZnwmSt11align_val_t,
+       ZnwmSt11align_val_tRKSt9nothrow_t,
+       Znwm12__hot_cold_t,
+       ZnwmSt11align_val_t12__hot_cold_t,
+       ZnwmSt11align_val_tRKSt9nothrow_t12__hot_cold_t,
+       Znam12__hot_cold_t,
+       ZnamSt11align_val_t12__hot_cold_t,
+       ZnamSt11align_val_tRKSt9nothrow_t12__hot_cold_t,
+       size_returning_new,
+       size_returning_new_hot_cold,
+       size_returning_new_aligned,
+       size_returning_new_aligned_hot_cold);
+defvar ItaniumNewDeleteSet =
+  (add msvc_new_int,
+       msvc_new_int_nothrow,
+       msvc_new_longlong,
+       msvc_new_longlong_nothrow,
+       msvc_delete_ptr32,
+       msvc_delete_ptr32_nothrow,
+       msvc_delete_ptr32_int,
+       msvc_delete_ptr64,
+       msvc_delete_ptr64_nothrow,
+       msvc_delete_ptr64_longlong,
+       msvc_new_array_int,
+       msvc_new_array_int_nothrow,
+       msvc_new_array_longlong,
+       msvc_new_array_longlong_nothrow,
+       msvc_delete_array_ptr32,
+       msvc_delete_array_ptr32_nothrow,
+       msvc_delete_array_ptr32_int,
+       msvc_delete_array_ptr64,
+       msvc_delete_array_ptr64_nothrow,
+       msvc_delete_array_ptr64_longlong);
+
+def IsMSVCRT : TargetLibCallPredicate<"T.isOSMSVCRT()">;
+def NotMSVCRT : TargetLibCallPredicate<"!T.isOSMSVCRT()">;
+
+def MSVCRTLibrary : TargetLibrary<
+  IsMSVCRT,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ NonItaniumNewDeleteSet,
+  /* CustomName */ EmptyDAG>;
+
+def NotMSVCRTLibrary : TargetLibrary<
+  NotMSVCRT,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ ItaniumNewDeleteSet,
+  /* CustomName */ EmptyDAG>;
+
+// exp10 and exp10f are not available on OS X until 10.9 and iOS until 7.0
+// and their names are __exp10 and __exp10f. exp10l is not available on
+// OS X or iOS.
+
+def ExpMacOSXLibrary : TargetLibrary<
+  TargetLibCallPredicate<"T.getOS() == Triple::MacOSX">,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add exp10l,
+                         TargetLibCalls<
+                           (add exp10, exp10f),
+                           TargetLibCallPredicate<"T.isMacOSXVersionLT(10, 9)">
+                         >),
+  /* CustomName */ (add TargetLibCalls<
+                          (add TargetLibCallCustomName<exp10, "__exp10">,
+                               TargetLibCallCustomName<exp10f, "__exp10f">),
+                          TargetLibCallPredicate<"!T.isMacOSXVersionLT(10, 9)">
+                         >)>;
+
+def ExpUnAvailable : TargetLibCallPredicate<
+  [{!T.isWatchOS() &&
+    (T.isOSVersionLT(7, 0) || (T.isOSVersionLT(9, 0) && T.isX86()))}]>;
+def ExpCustomName : TargetLibCallPredicate<
+  [{!(!T.isWatchOS() &&
+      (T.isOSVersionLT(7, 0) || (T.isOSVersionLT(9, 0) && T.isX86())))}]>;
+
+def ExPIOSTvOSWatchOSXROSLibrary : TargetLibrary<
+  TargetLibCallPredicate<
+    [{T.getOS() == Triple::IOS || T.getOS() == Triple::TvOS ||
+      T.getOS() == Triple::WatchOS || T.getOS() == Triple::XROS}]>,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add exp10l,
+                         TargetLibCalls<(add exp10, exp10f), ExpUnAvailable>),
+  /* CustomName */ (add TargetLibCalls<
+                          (add TargetLibCallCustomName<exp10, "__exp10">,
+                               TargetLibCallCustomName<exp10f, "__exp10f">),
+                          ExpCustomName>)>;
+
+// exp10, exp10f, exp10l is available on Linux (GLIBC) but are extremely
+// buggy prior to glibc version 2.18. Until this version is widely deployed
+// or we have a reasonable detection strategy, we cannot use exp10 reliably
+// on Linux.
+
+def ExpDefaultLibrary : TargetLibrary<
+  TargetLibCallPredicate<
+    [{!(T.getOS() == Triple::MacOSX ||
+        T.getOS() == Triple::IOS || T.getOS() == Triple::TvOS ||
+        T.getOS() == Triple::WatchOS || T.getOS() == Triple::XROS)}]>,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add exp10, exp10f, exp10l),
+  /* CustomName */ EmptyDAG>;
+
+// ffsl is available on at least Darwin, Mac OS X, iOS, FreeBSD, and
+// Linux (GLIBC):
+// http://developer.apple.com/library/mac/#documentation/Darwin/Reference/ManPages/man3/ffsl.3.html
+// http://svn.freebsd.org/base/head/lib/libc/string/ffsl.c
+// http://www.gnu.org/software/gnulib/manual/html_node/ffsl.html
+
+defvar FFSLAvailable =
+  [{!(T.getOS() == Triple::Darwin || T.getOS() == Triple::MacOSX ||
+      T.getOS() == Triple::IOS || T.getOS() == Triple::TvOS ||
+      T.getOS() == Triple::WatchOS || T.getOS() == Triple::XROS ||
+      T.getOS() == Triple::FreeBSD || T.getOS() == Triple::Linux)}];
+
+def FFSLDefaultLibrary : TargetLibrary<
+  TargetLibCallPredicate<FFSLAvailable>,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add ffsl),
+  /* CustomName */ EmptyDAG>;
+
+// ffsll is available on at least FreeBSD and Linux (GLIBC):
+// http://svn.freebsd.org/base/head/lib/libc/string/ffsll.c
+// http://www.gnu.org/software/gnulib/manual/html_node/ffsll.html
+
+def FFSLLDefaultLibrary : TargetLibrary<
+  TargetLibCallPredicate<FFSLAvailable>,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add ffsll),
+  /* CustomName */ EmptyDAG>;
+
+// The following functions are available on at least FreeBSD:
+// http://svn.freebsd.org/base/head/lib/libc/string/fls.c
+// http://svn.freebsd.org/base/head/lib/libc/string/flsl.c
+// http://svn.freebsd.org/base/head/lib/libc/string/flsll.c
+
+def FLSNotFreeBSDLibrary : TargetLibrary<
+  TargetLibCallPredicate<"!T.isOSFreeBSD()">,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add fls, flsl, flsll),
+  /* CustomName */ EmptyDAG>;
+
+// The following functions are only available on GNU/Linux (using glibc).
+// Linux variants without glibc (eg: bionic, musl) may have some subset.
+// Android and musl have memalign.
+// Relaxed math functions are included in math-finite.h on Linux (GLIBC).
+// Note that math-finite.h is no longer supported by top-of-tree GLIBC,
+// so we keep these functions around just so that they're recognized by
+// the ConstantFolder.
+defvar OnlyAvailableOnGNULinuxSet =
+  (add dunder_strdup, dunder_strtok_r,
+       dunder_isoc99_scanf, dunder_isoc99_sscanf,
+       under_IO_getc, under_IO_putc,
+       TargetLibCalls<(add memalign),
+                      TargetLibCallPredicate<"!T.isAndroid() && !T.isMusl()">>,
+       fopen64, fseeko64, fstat64, fstatvfs64, ftello64,
+       lstat64, open64, stat64, statvfs64, tmpfile64,
+       acos_finite, acosf_finite, acosl_finite,
+       acosh_finite, acoshf_finite, acoshl_finite,
+       asin_finite, asinf_finite, asinl_finite,
+       atan2_finite, atan2f_finite, atan2l_finite,
+       atanh_finite, atanhf_finite, atanhl_finite,
+       cosh_finite, coshf_finite, coshl_finite,
+       exp10_finite, exp10f_finite, exp10l_finite,
+       exp2_finite, exp2f_finite, exp2l_finite,
+       exp_finite, expf_finite, expl_finite,
+       log10_finite, log10f_finite, log10l_finite,
+       log2_finite, log2f_finite, log2l_finite,
+       log_finite, logf_finite, logl_finite,
+       pow_finite, powf_finite, powl_finite,
+       sinh_finite, sinhf_finite, sinhl_finite,
+       sqrt_finite, sqrtf_finite, sqrtl_finite);
+
+def NotLinuxOrGNUEnv : TargetLibCallPredicate<
+  "!T.isOSLinux() || !T.isGNUEnvironment()">;
+
+def NotLinuxOrGNUEnvLibrary : TargetLibrary<
+  NotLinuxOrGNUEnv,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ OnlyAvailableOnGNULinuxSet,
+  /* CustomName */ EmptyDAG>;
+
+// available IO unlocked variants on GNU/Linux and Android P or later
+def IsGNULinuxAndroid : TargetLibCallPredicate<
+  [{(T.isOSLinux() && T.isGNUEnvironment()) ||
+    (T.isAndroid() && !T.isAndroidVersionLT(28))}]>;
+
+def IOUnlockedOnGNULinuxAndroidLibrary : TargetLibrary<
+  IsGNULinuxAndroid,
+  /* Available */ IOUnlockedSet,
+  /* UnAvailable */ EmptyDAG,
+  /* CustomName */ EmptyDAG>;
+
+// PS4/PS5 do not have new/delete with "unsigned int" size parameter;
+// they only have the "unsigned long" versions.
+defvar PSNewDeleteSet =
+  (add ZdaPvj,
+       ZdaPvjSt11align_val_t,
+       ZdlPvj,
+       ZdlPvjSt11align_val_t,
+       Znaj,
+       ZnajRKSt9nothrow_t,
+       ZnajSt11align_val_t,
+       ZnajSt11align_val_tRKSt9nothrow_t,
+       Znwj,
+       ZnwjRKSt9nothrow_t,
+       ZnwjSt11align_val_t,
+       ZnwjSt11align_val_tRKSt9nothrow_t);
+
+// None of the *_chk functions.
+defvar PSCHKSet =
+  (add memccpy_chk, memcpy_chk, memmove_chk, mempcpy_chk, memset_chk,
+       snprintf_chk, sprintf_chk, stpcpy_chk, stpncpy_chk,
+       strcat_chk, strcpy_chk, strlcat_chk, strlcpy_chk, strlen_chk,
+       strncat_chk, strncpy_chk, vsnprintf_chk, vsprintf_chk);
+
+// Various Posix system functions.
+defvar PSPosixSet =
+  (add access, chmod, chown, closedir, ctermid,
+       execl, execle, execlp, execv, execvP, execve, execvp, execvpe,
+       fork, fstat, fstatvfs, getenv,
+       getitimer, getlogin_r, getpwnam, gettimeofday,
+       lchown, lstat, mkdir, open, opendir,
+       pclose, popen, pread, pvalloc, pwrite,
+       read, readlink, realpath, rename, rmdir,
+       setitimer, stat, statvfs, system, times, tmpfile,
+       unlink, uname, unsetenv, utime, utimes, valloc, write);
+
+// Miscellaneous other functions not provided.
+defvar PSMisceSet =
+  (add atomic_load, atomic_store, __kmpc_alloc_shared, __kmpc_free_shared,
+       bcmp, bcopy, bzero, cabs, cabsf, cabsl, dunder_strndup,
+       ffs, flockfile, fseeko, ftello, ftrylockfile, funlockfile,
+       htonl, htons, isascii, memccpy, mempcpy, memrchr, ntohl, ntohs,
+       reallocarray, reallocf, roundeven, roundevenf, roundevenl,
+       stpcpy, stpncpy, strlcat, strlcpy, strndup, strnlen, toascii);
+
+def IsPS : TargetLibCallPredicate<"T.isPS()">;
+
+def PSLibrary : TargetLibrary<
+  IsPS,
+  /* Available */ (add memalign),
+  /* UnAvailable */ (add PSNewDeleteSet, PSCHKSet, PSPosixSet, PSMisceSet),
+  /* CustomName */ EmptyDAG>;
+
+def IsFreeBSD : TargetLibCallPredicate<"T.isOSFreeBSD()">;
+
+def FreeBSDLibrary : TargetLibrary<
+  IsFreeBSD,
+  /* Available */ (add dunder_strtok_r, memalign,
+                       fputc_unlocked, fputs_unlocked,
+                       fread_unlocked, fwrite_unlocked,
+                       getc_unlocked, getchar_unlocked,
+                       putc_unlocked, putchar_unlocked),
+  /* UnAvailable */ (add __kmpc_alloc_shared, __kmpc_free_shared,
+                         dunder_strndup, memccpy_chk, strlen_chk,
+                         fmaximum_num, fmaximum_numf, fmaximum_numl,
+                         fminimum_num, fminimum_numf, fminimum_numl,
+                         roundeven, roundevenf, roundevenl),
+  /* CustomName */ EmptyDAG>;
+
+// As currently implemented in clang, NVPTX code has no standard library to
+// speak of.  Headers provide a standard-ish library implementation, but many
+// of the signatures are wrong -- for example, many libm functions are not
+// extern "C".
+//
+// libdevice, an IR library provided by nvidia, is linked in by the front-end,
+// but only used functions are provided to llvm.  Moreover, most of the
+// functions in libdevice don't map precisely to standard library functions.
+//
+// FIXME: Having no standard library prevents e.g. many fastmath
+// optimizations, so this situation should be fixed.
+
+def IsNVPTX : TargetLibCallPredicate<"T.isNVPTX()">;
+def NotNVPTX : TargetLibCallPredicate<"!T.isNVPTX()">;
+
+let DisableAll = true in {
+def NVPTXLibrary : TargetLibrary<
+  IsNVPTX,
+  /* Available */ (add nvvm_reflect, malloc, free,
+                       __kmpc_alloc_shared, __kmpc_free_shared),
+  /* UnAvailable */ EmptyDAG,
+  /* CustomName */ EmptyDAG>;
+}
+
+def NotNVPTXLibrary : TargetLibrary<
+  NotNVPTX,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add nvvm_reflect),
+  /* CustomName */ EmptyDAG>;
+
+def IsAIX : TargetLibCallPredicate<"T.isOSAIX()">;
+def NotAIX : TargetLibCallPredicate<"!T.isOSAIX()">;
+
+// These vec_malloc/free routines are only available on AIX.
+def NotAIXLibrary : TargetLibrary<
+  NotAIX,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add vec_calloc, vec_malloc, vec_realloc, vec_free),
+  /* CustomName */ EmptyDAG>;
+
+def IsAIXLibrary : TargetLibrary<
+  IsAIX,
+  /* Available */ EmptyDAG,
+  /* UnAvailable */ (add memrchr),
+  /* CustomName */ EmptyDAG>;

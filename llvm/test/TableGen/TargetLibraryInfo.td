@@ -20,14 +20,18 @@ def sinfCName : TargetLibCallCustomName<sinf, "sinfCN">;
 def ZOS_1 : TargetLibCalls<(add cosf), cond1>;
 def ZOS_2 : TargetLibCalls<(add sinfCName), cond2>;
 
-def ZOSLibrary : TargetLibrary<isZOS, (add printf, ZOS_1), (add ZOS_2)>;
+defvar EmptyDAG = (add);
+def ZOSLibrary : TargetLibrary<isZOS, (add printf, ZOS_1),
+                               (add TargetLibCalls<(add cabs), cond1>),
+                               (add ZOS_2)>;
 
 def isOTHER : TargetLibCallPredicate<"TT.isOSOTHER()">;
 
 def OTHER : TargetLibCalls<(add fmaxf)>;
 
-let IsAvailable = true in {
-def OTHERLibrary : TargetLibrary<isOTHER, (add OTHER), (add)>;
+let DisableAll = true in {
+def OTHERLibrary : TargetLibrary<isOTHER, (add OTHER),
+                                 EmptyDAG, EmptyDAG>;
 }
 
 // CHECK:      #ifdef GET_TARGET_LIBRARY_INFO_ENUM
@@ -136,9 +140,10 @@ def OTHERLibrary : TargetLibrary<isOTHER, (add OTHER), (add)>;
 // CHECK:      #ifdef GET_TARGET_LIBRARY_INFO_INIT
 // CHECK-NEXT: #undef GET_TARGET_LIBRARY_INFO_INIT
 // CHECK:        if (TT.isOSzOS()) {
-// CHECK-NEXT:     TLI.setUnavailable(LibFunc_printf);
+// CHECK-NEXT:     TLI.setAvailable(LibFunc_printf);
 // CHECK-NEXT:     if (cond1) {
-// CHECK-NEXT:       TLI.setUnavailable(LibFunc_cosf);
+// CHECK-NEXT:       TLI.setAvailable(LibFunc_cosf);
+// CHECK-NEXT:       TLI.setUnavailable(LibFunc_cabs);
 // CHECK-NEXT:     }
 // CHECK-NEXT:     if (cond2) {
 // CHECK-NEXT:       TLI.setAvailableWithName(LibFunc_sinf, "sinfCN");

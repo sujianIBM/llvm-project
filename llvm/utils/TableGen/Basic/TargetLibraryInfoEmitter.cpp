@@ -183,7 +183,7 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoInitializeLibCalls(
   const Record *AlwaysAvailable = Records.getDef("AlwaysAvailable");
 
   for (const Record *R : AllLibraries) {
-    AvailabilityPred TopLevelPredicate(R->getValueAsDef("TriplePred"));
+    AvailabilityPred TopLevelPredicate(R->getValueAsDef("TopPred"));
 
     unsigned IndentDepth = 2;
     if (!TopLevelPredicate.isAlwaysAvailable()) {
@@ -192,84 +192,91 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoInitializeLibCalls(
       IndentDepth += 2;
     }
 
-    bool IsAvailable = R->getValueAsBit("IsAvailable");
-    if (IsAvailable) {
+    bool DisableAll = R->getValueAsBit("DisableAll");
+    if (DisableAll) {
       OS << indent(IndentDepth)
-	 << "TLI.disableAllFunctions();\n";
+         << "TLI.disableAllFunctions();\n";
     }
 
     SetTheory Sets;
-    DenseMap<const Record *, const Record *> Libcall2Pred;
-    DenseMap<const Record *, const Record *> LibcallCustomName2Pred;
+    DenseMap<const Record *, std::vector<const Record *>> Libcall2Pred;
     Sets.addExpander("TargetLibCalls",
-		     std::make_unique<TargetLibcallPredicateExpander>(
-		         Libcall2Pred, LibcallCustomName2Pred));
-    const SetTheory::RecVec *Libcalls =
-	Sets.expand(R->getValueAsDef("LibCallList"));
-    const SetTheory::RecVec *CustomNames =
-	Sets.expand(R->getValueAsDef("CustomNameList"));
+                     std::make_unique<TargetLibcallPredicateExpander>(
+                         Libcall2Pred));
 
-    SetVector<const Record *> PredicateSet;
-    DenseMap<const Record *,
-             std::pair<std::vector<const Record *>,
-	               std::vector<const Record *>>> Pred2Libcalls;
-
-    auto MapPred = [&PredicateSet, &Pred2Libcalls, &AlwaysAvailable](
-		       const SetTheory::RecVec *Libcalls,
-	               DenseMap<const Record *, const Record *> &Libcall2Pred,
-		       bool IsDefault) {
-      if (!Libcalls)
-	return;
-
-      for (const Record *Libcall : *Libcalls) {
-	auto It = Libcall2Pred.find(Libcall);
-	const Record *Pred = (It == Libcall2Pred.end()) ? AlwaysAvailable : It->second;
-
-	auto &Target = Pred2Libcalls[Pred];
-	PredicateSet.insert(Pred);
-	auto &TargetLibcalls = IsDefault ? Target.first : Target.second;
-	TargetLibcalls.push_back(Libcall);
-      }
+    std::array<StringRef, 3> FieldNames = {
+      "AvailableList",
+      "UnAvailableList",
+      "CustomNameList"
     };
 
-    MapPred(Libcalls, Libcall2Pred, true);
-    MapPred(CustomNames, LibcallCustomName2Pred, false);
+    DenseMap<const Record *,
+             std::array<std::vector<const Record *>, FieldNames.size()>>
+    Pred2Libcalls;
+    SetVector<const Record *> PredicateSet;
+
+    for (unsigned idx = 0; idx < FieldNames.size(); ++idx) {
+      Libcall2Pred.clear();
+      const SetTheory::RecVec *Libcalls =
+          Sets.expand(R->getValueAsDef(FieldNames[idx]));
+
+      if (!Libcalls)
+        continue;
+
+      for (const Record *Libcall : *Libcalls) {
+        auto It = Libcall2Pred.find(Libcall);
+        if (It == Libcall2Pred.end()) {
+          auto &Target = Pred2Libcalls[AlwaysAvailable];
+          Target[idx].push_back(Libcall);
+          PredicateSet.insert(AlwaysAvailable);
+        } else {
+          for (const Record *Pred : It->second) {
+            auto &Target = Pred2Libcalls[Pred];
+            Target[idx].push_back(Libcall);
+            PredicateSet.insert(Pred);
+          }
+        }
+      }
+    }
 
     SmallVector<const Record *, 0> Predicates = PredicateSet.takeVector();
     for (const Record *Pred : Predicates) {
       auto It = Pred2Libcalls.find(Pred);
 
-      if (It == Pred2Libcalls.end())
-	llvm::errs() << "Cant find Pred!\n";
       AvailabilityPred SubsetPred(Pred);
       if (!SubsetPred.isAlwaysAvailable()) {
-	OS << indent(IndentDepth);
-	SubsetPred.emitIf(OS);
-	IndentDepth += 2;
+        OS << indent(IndentDepth);
+        SubsetPred.emitIf(OS);
+        IndentDepth += 2;
       }
 
-      // emit TLI.setAvailable(LibFunc_xxx); / TLI.setUnavailable(LibFunc_xxx);
-      for (const Record *R : It->second.first) {
+      // emit TLI.setAvailable(LibFunc_xxx);
+      for (const Record *R : It->second[0]) {
         OS << indent(IndentDepth)
-           << (IsAvailable ? "TLI.setAvailable(" : "TLI.setUnavailable(")
-	   << "LibFunc_" << R->getName() << ");\n";
+           << "TLI.setAvailable(LibFunc_" << R->getName() << ");\n";
+      }
+
+      // TLI.setUnavailable(LibFunc_xxx);
+      for (const Record *R : It->second[1]) {
+        OS << indent(IndentDepth)
+           << "TLI.setUnavailable(LibFunc_" << R->getName() << ");\n";
       }
 
       // emit TLI.setAvailableWithName(LibFunc_xxx, "xxx");
-      for (const Record *R : It->second.second) {
-	const Record *Provides = R->getValueAsDef("Provides");
-	if (!Provides)
-	  PrintError(R, "TargetLibCallCustomName does not have a TargetLibCall");
-	else {
-	  OS << indent(IndentDepth)
+      for (const Record *R : It->second[2]) {
+        const Record *Provides = R->getValueAsDef("Provides");
+        if (!Provides)
+          PrintError(R, "TargetLibCallCustomName does not have a TargetLibCall");
+        else {
+          OS << indent(IndentDepth)
              << "TLI.setAvailableWithName(LibFunc_" << Provides->getName()
-	     << ", " << "\"" << R->getValueAsString("CustomName") << "\");\n";
-	}
+             << ", " << "\"" << R->getValueAsString("CustomName") << "\");\n";
+        }
       }
 
       if (!SubsetPred.isAlwaysAvailable()) {
-	IndentDepth -= 2;
-	OS << indent(IndentDepth);
+        IndentDepth -= 2;
+        OS << indent(IndentDepth);
         SubsetPred.emitEndIf(OS);
       }
     }

@@ -40,14 +40,11 @@ public:
 struct TargetLibcallPredicateExpander : SetTheory::Expander {
   // Only one Predicate is uspported for a Libcall on a target
   // Nested Predicates are not allowed
-  DenseMap<const Record *, const Record *> &Libcall2Pred;
-  DenseMap<const Record *, const Record *> &LibcallCustomName2Pred;
+  DenseMap<const Record *, std::vector<const Record *>> &Libcall2Pred;
 
   TargetLibcallPredicateExpander(
-      DenseMap<const Record *, const Record *> &Libcall2Pred,
-      DenseMap<const Record *, const Record *> &LibcallCustomName2Pred)
-      : Libcall2Pred(Libcall2Pred),
-	LibcallCustomName2Pred(LibcallCustomName2Pred) {}
+      DenseMap<const Record *, std::vector<const Record *>> &Libcall2Pred)
+      : Libcall2Pred(Libcall2Pred) {}
 
   void expand(SetTheory &ST, const Record *Def,
               SetTheory::RecSet &Elts) override;

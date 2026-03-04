@@ -23,16 +23,16 @@ void TargetLibcallPredicateExpander::expand(SetTheory &ST, const Record *Def,
 
   for (const Record *Libcall : TmpElts) {
     if (!AP.isAlwaysAvailable()) {
-      bool IsDefault = Libcall->isSubClassOf("TargetLibCall");
-      auto &Target = IsDefault ? Libcall2Pred : LibcallCustomName2Pred;
-      StringRef FieldName = IsDefault ? "Name" : "CustomName";
-      auto [It, Inserted] = Target.insert({Libcall, AP.getDef()});
+      auto [It, Inserted] = Libcall2Pred.insert({Libcall, {}});
       if (!Inserted) {
+        StringRef FieldName = Libcall->isSubClassOf("TargetLibCall")
+                              ? "Name" : "CustomName";
         PrintError(
             Def,
             "combining nested libcall set predicates currently unhandled: '" +
                 Libcall->getValueAsString(FieldName) + "'");
       }
+      It->second.push_back(AP.getDef());
     }
   }
 }

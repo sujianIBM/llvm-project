@@ -66,10 +66,11 @@ class TargetLibCalls<dag FuncList,
 
 // Define sets of libcalls to set available/unavailable/availableWithCustomName
 // for a target.
-// When IsAvailable is true, "TLI.disableAllFunctions();" will be called at first.
-class TargetLibrary<TargetLibCallPredicate Pred, dag FuncList, dag NameList> {
-  TargetLibCallPredicate TriplePred = Pred;
-  TargetLibCalls LibCallList = TargetLibCalls<FuncList>;
+class TargetLibrary<TargetLibCallPredicate Pred,
+                    dag AvailList, dag UnAvailList, dag NameList> {
+  TargetLibCallPredicate TopPred = Pred;
+  TargetLibCalls AvailableList = TargetLibCalls<AvailList>;
+  TargetLibCalls UnAvailableList = TargetLibCalls<UnAvailList>;
   TargetLibCalls CustomNameList = TargetLibCalls<NameList>;
-  bit IsAvailable = false;
+  bit DisableAll = false;
 }
