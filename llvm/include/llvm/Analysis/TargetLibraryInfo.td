@@ -2267,3 +2267,18 @@ def IsAIXLibrary : TargetLibrary<
   /* Available */ EmptyDAG,
   /* UnAvailable */ (add memrchr),
   /* CustomName */ EmptyDAG>;
+
+
+//--------------------------------------------------------------------
+// Change name and signature for standard libcalls
+// on some targets.
+//--------------------------------------------------------------------
+
+def IsDefault : TargetLibCallPredicate<"!TT.isOSzOS()">;
+def DefaultLibraryImpl: TargetLibraryImpl<IsDefault, []>;
+
+def Impl_copysign : TargetLibCallImpl<copysign, "@@DCPY@B",
+                                      copysign.ReturnType,
+                                      copysign.ArgumentTypes>;
+def IsZOS : TargetLibCallPredicate<"TT.isOSzOS()">;
+def ZOSLibraryImpl: TargetLibraryImpl<IsZOS, [Impl_copysign]>;

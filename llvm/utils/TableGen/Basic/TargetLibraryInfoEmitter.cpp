@@ -36,6 +36,8 @@ private:
   void emitTargetLibraryInfoSignatureTable(raw_ostream &OS) const;
   void emitTargetLibraryInfoInitializeLibCalls(raw_ostream &OS) const;
 
+  void emitTargetLibraryInfoStringTable_Impl(raw_ostream &OS) const;
+
 public:
   TargetLibraryInfoEmitter(const RecordKeeper &R);
 
@@ -118,6 +120,59 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoStringTable(
      << NumEl << "];\n";
   OS << "LLVM_ABI static const uint8_t StandardNamesSizeTable[" << NumEl
      << "];\n";
+}
+
+void TargetLibraryInfoEmitter::emitTargetLibraryInfoStringTable_Impl(
+    raw_ostream &OS) const {
+  SmallVector<const Record *, 1024> AllLibraries(
+      Records.getAllDerivedDefinitions("TargetLibraryImpl"));
+
+  for (const Record *R : AllLibraries) {
+    AvailabilityPred TopLevelPredicate(R->getValueAsDef("TopPred"));
+
+    unsigned IndentDepth = 2;
+    if (!TopLevelPredicate.isAlwaysAvailable()) {
+      OS << indent(IndentDepth);
+      TopLevelPredicate.emitIf(OS);
+      IndentDepth += 2;
+    }
+
+    const auto *Impls = R->getValueAsListInit("ImplList");
+    DenseMap<const Record *, const Record *> Libcall2Impl;
+    for (unsigned I = 0, E = Impls->size(); I < E; ++I) {
+      const Record *Impl = Impls->getElementAsRecord(I);
+      const Record *Libcall = Impl->getValueAsDef("Provides");
+      auto [It, Inserted] = Libcall2Impl.insert({Libcall, Impl});
+      if (!Inserted) {
+        PrintError(R,
+                   "conflicting implementations for libcall " +
+                    Libcall->getValueAsString("String") + ": " +
+                    It->second->getValueAsString("String") + " and " +
+                    Impl->getValueAsString("String"));
+      }
+    }
+
+    llvm::StringToOffsetTable Table(
+        /*AppendZero=*/true,
+        "TargetLibraryInfoImpl::", /*UsePrefixForStorageMember=*/false);
+    for (const auto *R : AllTargetLibcalls) {
+      auto It = Libcall2Impl.find(R);
+      if (It == Libcall2Impl.end())
+        Table.GetOrAddStringOffset(R->getValueAsString("String"));
+      else
+        Table.GetOrAddStringOffset(It->second->getValueAsString("String"));
+    }
+
+    OS << indent(IndentDepth);
+    Table.EmitStringTableDef(OS, "StandardNamesStrTable");
+
+    if (!TopLevelPredicate.isAlwaysAvailable()) {
+      IndentDepth -= 2;
+      OS << indent(IndentDepth);
+      TopLevelPredicate.emitEndIf(OS);
+    }
+    OS << '\n';
+  }
 }
 
 // Since there are much less type signatures then library functions, the type
@@ -293,10 +348,11 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoInitializeLibCalls(
 void TargetLibraryInfoEmitter::run(raw_ostream &OS) {
   emitSourceFileHeader("Target Library Info Source Fragment", OS, Records);
 
-  emitTargetLibraryInfoEnum(OS);
-  emitTargetLibraryInfoStringTable(OS);
-  emitTargetLibraryInfoSignatureTable(OS);
-  emitTargetLibraryInfoInitializeLibCalls(OS);
+  //emitTargetLibraryInfoEnum(OS);
+  //emitTargetLibraryInfoStringTable(OS);
+  //emitTargetLibraryInfoSignatureTable(OS);
+  //emitTargetLibraryInfoInitializeLibCalls(OS);
+  emitTargetLibraryInfoStringTable_Impl(OS);
 }
 
 static TableGen::Emitter::OptClass<TargetLibraryInfoEmitter>

@@ -51,6 +51,15 @@ class TargetLibCallPredicate<code cond> {
 }
 def AlwaysAvailable : TargetLibCallPredicate<[{}]>;
 
+class TargetLibCallImpl<TargetLibCall LibCall,
+                        string Str, FuncArgType RetType,
+                        list<FuncArgType> ArgTypes = []> {
+  TargetLibCall Provides = LibCall;
+  string String = Str;
+  FuncArgType ReturnType = RetType;
+  list<FuncArgType> ArgumentTypes = ArgTypes;
+}
+
 class TargetLibCallCustomName<TargetLibCall LibCall, string Name> {
   TargetLibCall Provides = LibCall;
   string CustomName = Name;
@@ -73,4 +82,10 @@ class TargetLibrary<TargetLibCallPredicate Pred,
   TargetLibCalls UnAvailableList = TargetLibCalls<UnAvailList>;
   TargetLibCalls CustomNameList = TargetLibCalls<NameList>;
   bit DisableAll = false;
+}
+
+class TargetLibraryImpl<TargetLibCallPredicate Pred,
+                        list<TargetLibCallImpl> FuncList> {
+  TargetLibCallPredicate TopPred = Pred;
+  list<TargetLibCallImpl> ImplList = FuncList;
 }
