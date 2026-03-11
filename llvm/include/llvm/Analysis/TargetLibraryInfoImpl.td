@@ -12,6 +12,7 @@ class FuncArgType {
 }
 
 // Recognized types of library function arguments and return types.
+def NoneType : FuncArgType; // dummy
 def Void : FuncArgType;
 def Bool : FuncArgType;     // 8 bits on all targets
 def Int16 : FuncArgType;

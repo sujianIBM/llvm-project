@@ -144,10 +144,10 @@ foreach FPTy = ["F32", "F64", "F80", "F128", "PPCF128"] in {
   def EXP_FINITE_#FPTy : RuntimeLibcall;
   def EXP2_#FPTy : RuntimeLibcall;
   def EXP2_FINITE_#FPTy : RuntimeLibcall;
-  def EXP10_#FPTy : RuntimeLibcall;
+  //def EXP10_#FPTy : RuntimeLibcall;
   def EXP10_FINITE_#FPTy : RuntimeLibcall;
-  def SIN_#FPTy : RuntimeLibcall;
-  def COS_#FPTy : RuntimeLibcall;
+  //def SIN_#FPTy : RuntimeLibcall;
+  //def COS_#FPTy : RuntimeLibcall;
   def TAN_#FPTy : RuntimeLibcall;
   def SINH_#FPTy : RuntimeLibcall;
   def COSH_#FPTy : RuntimeLibcall;
@@ -162,6 +162,24 @@ foreach FPTy = ["F32", "F64", "F80", "F128", "PPCF128"] in {
 
   def CABS_#FPTy : RuntimeLibcall;
 }
+
+  def EXP10_F32 : RuntimeLibcall<"exp10f", Flt, [Flt]>;
+  def EXP10_F64 : RuntimeLibcall<"exp10", Dbl, [Dbl]>;
+  def EXP10_F128 : RuntimeLibcall<"exp10l", LDbl, [LDbl]>;
+  def EXP10_F80 : RuntimeLibcall;
+  def EXP10_PPCF128 : RuntimeLibcall;
+
+  def SIN_F32 : RuntimeLibcall<"sinf", Flt, [Flt]>;
+  def SIN_F64 : RuntimeLibcall<"sin", Dbl, [Dbl]>;
+  def SIN_F128 : RuntimeLibcall<"sinl", LDbl, [LDbl]>;
+  def SIN_F80 : RuntimeLibcall;
+  def SIN_PPCF128 : RuntimeLibcall;
+
+  def COS_F32 : RuntimeLibcall<"cosf", Flt, [Flt]>;
+  def COS_F64 : RuntimeLibcall<"cos", Dbl, [Dbl]>;
+  def COS_F128 : RuntimeLibcall<"cosl", LDbl, [LDbl]>;
+  def COS_F80 : RuntimeLibcall;
+  def COS_PPCF128 : RuntimeLibcall;
 
 foreach FPTy = [ "F32", "F64" ] in {
   def SINCOS_STRET_#FPTy : RuntimeLibcall;

@@ -79,6 +79,10 @@ public:
 
   StringRef getName() const { return TheDef->getName(); }
 
+  StringRef getLibcallFuncName() const {
+    return TheDef->getValueAsString("String");
+  }
+
   size_t getEnumVal() const { return EnumVal; }
 
   void emitEnumEntry(raw_ostream &OS) const {
