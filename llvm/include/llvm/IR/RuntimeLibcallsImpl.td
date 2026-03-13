@@ -50,14 +50,15 @@ def SMEABI_PreserveMost_From_X2 : LibcallCallingConv<[{CallingConv::AArch64_SME_
 /// When adding PPCF128 functions here, note that their names generally need
 /// to be overridden for Darwin with the xxx$LDBL128 form.  See
 /// PPCISelLowering.cpp.
-class RuntimeLibcall<string Str = "", FuncArgType RetType = NoneType,
-                     list<FuncArgType> ArgTypes = []> {
+class RuntimeLibcall<FuncArgType RetType = NoneType,
+                     list<FuncArgType> ArgTypes = [],
+                     string EnumName = ""> {
   string Name = NAME;
 
   // TODO: Record type signature and attributes
-  string String = Str;
   FuncArgType ReturnType = RetType;
   list<FuncArgType> ArgumentTypes = ArgTypes;
+  string LibFuncEnumName = EnumName; // For TargetLibraryInfo
 }
 
 // Concrete implementation of a libcall, which may have a different

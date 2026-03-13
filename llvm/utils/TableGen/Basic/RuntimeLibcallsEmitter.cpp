@@ -562,6 +562,9 @@ void RuntimeLibcallEmitter::emitSystemRuntimeLibrarySetCalls(
 }
 
 void RuntimeLibcallEmitter::emitRuntimeLibcallSummary(raw_ostream &OS) const {
+
+/*
+  // check how many Impls per Libcall
   DenseMap<const RuntimeLibcall *, std::vector<const RuntimeLibcallImpl *>>
       LibCallToDefaultImpl;
   for (const RuntimeLibcallImpl &LibcallImpl
@@ -577,6 +580,60 @@ void RuntimeLibcallEmitter::emitRuntimeLibcallSummary(raw_ostream &OS) const {
     else
       OS << Libcall.getName() << " has " << It->second.size() << " Impl(s)\n";
   }
+*/
+/*
+  for (const RuntimeLibcall &Libcall : Libcalls.getRuntimeLibcallDefList()) {
+    if (!Libcall.getLibcallFuncName().empty()) {
+      bool IsLower = (Libcall.getName().lower() == Libcall.getLibcallFuncName());
+      OS << "[" << (IsLower ? "Y" : "N") << "]"
+         << Libcall.getName() << " : " << Libcall.getLibcallFuncName() << "\n";
+    }
+  }
+*/
+  std::vector<const RuntimeLibcall*> TargetLibcallList;
+  for (const RuntimeLibcall &Libcall : Libcalls.getRuntimeLibcallDefList()) {
+    if (!Libcall.getLibFuncEnumName().empty()) {
+      TargetLibcallList.push_back(&Libcall);
+    }
+  }
+
+  DenseMap<const RuntimeLibcall *, std::vector<const RuntimeLibcallImpl *>>
+      LibCallToImpl;
+  for (const RuntimeLibcallImpl &LibcallImpl
+       : Libcalls.getRuntimeLibcallImplDefList()) {
+    const RuntimeLibcall *Provides = LibcallImpl.getProvides();
+    auto ItLibcall = llvm::find(TargetLibcallList, Provides);
+    if (ItLibcall != TargetLibcallList.end()) {
+      auto [It, Inserted] = LibCallToImpl.insert({Provides, {}});
+      It->second.push_back(&LibcallImpl);
+    }
+  }
+
+  for (const RuntimeLibcall *Libcall : TargetLibcallList) {
+/*
+    OS << "LibFunc_" << Libcall->getLibFuncEnumName();
+    auto It = LibCallToImpl.find(Libcall);
+    if (It->second.size() == 0)
+      OS << " : does not have an Impl!\n";
+    else {
+      OS << "[" << It->second.size() << "] : ";
+      for (auto Impl : It->second) {
+        if (Impl->isDefault())
+          OS << "[D]";
+        OS << Impl->getLibcallFuncName() << ", ";
+      }
+      OS << "\n";
+    }
+*/
+
+    auto It = LibCallToImpl.find(Libcall);
+    if (It->second.size() == 0) continue;
+    for (auto Impl : It->second) {
+      OS << "def " << Libcall->getLibFuncEnumName()
+         << " : TargetLibCall_R<" << Impl->getName() << ">;"
+         << "  // " << Impl->getLibcallFuncName() << "\n";
+    }
+  }
 }
 
 void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
@@ -587,7 +644,7 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
   std::vector<size_t> Libcall2Impl;
 
   for (const RuntimeLibcall &Libcall : Libcalls.getRuntimeLibcallDefList()) {
-    if (!Libcall.getLibcallFuncName().empty())
+    if (!Libcall.getLibFuncEnumName().empty())
       TargetLibcallList.push_back(&Libcall);
   }
 
@@ -604,10 +661,9 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
     auto It = llvm::find(TargetLibcallList, Provides);
     if (It != TargetLibcallList.end()) {
       TargetLibcallImplList.push_back(&LibcallImpl);
-      if (LibcallImpl.getLibcallFuncName() == Provides->getLibcallFuncName()) {
-        size_t Idx = It - TargetLibcallList.begin();
+      size_t Idx = It - TargetLibcallList.begin();
+      if (Libcall2Impl[Idx + 1] == 0 || LibcallImpl.isDefault())
         Libcall2Impl[Idx + 1] = LibcallImplIdx;
-      }
       LibcallImplIdx++;
     }
   }
@@ -617,16 +673,14 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
     OS << "enum LibFunc : unsigned {\n";
     OS.indent(2) << "NotLibFunc = 0,\n";
 
-    for (size_t I = 0; I < TargetLibcallList.size(); ++I) {
-      size_t Idx = Libcall2Impl[I + 1] - 1;
-      const RuntimeLibcallImpl *LibcallImpl = TargetLibcallImplList[Idx];
-      OS.indent(2) << "LibFunc_" << LibcallImpl->getLibcallFuncName() << ",\n";
+    for (const RuntimeLibcall *Libcall : TargetLibcallList) {
+      OS.indent(2) << "LibFunc_" << Libcall->getLibFuncEnumName() << ",\n";
     }
     OS.indent(2) << "NumLibFuncs,\n";
     OS.indent(2) << "End_LibFunc = NumLibFuncs,\n";
     if (TargetLibcallList.size()) {
       OS.indent(2) << "Begin_LibFunc = LibFunc_"
-                   << TargetLibcallImplList[Libcall2Impl[0]]->getLibcallFuncName()
+                   << TargetLibcallList[0]->getLibFuncEnumName()
                    << ",\n";
     } else {
       OS.indent(2) << "Begin_LibFunc = NotLibFunc,\n";
@@ -637,8 +691,12 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
   llvm::StringToOffsetTable Table(
       /*AppendZero=*/true,
       "TargetLibraryInfoImpl::", /*UsePrefixForStorageMember=*/false);
-  for (const RuntimeLibcallImpl *LibcallImpl : TargetLibcallImplList)
-    Table.GetOrAddStringOffset(LibcallImpl->getLibcallFuncName());
+  unsigned Idx = 1;
+  for (const RuntimeLibcallImpl *LibcallImpl : TargetLibcallImplList) {
+    StringRef Str = LibcallImpl->getLibcallFuncName();
+    Table.GetOrAddStringOffset(
+      (Str + Twine(" /* ") + Twine(Idx++) + Twine(" */ ")).str());
+  }
 
   size_t NumEl = TargetLibcallImplList.size() + 1;
   {
@@ -651,9 +709,12 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
        << "] = "
           "{\n";
     OS.indent(2) << "0, //\n";
+    Idx = 1;
     for (const RuntimeLibcallImpl *LibcallImpl : TargetLibcallImplList) {
       StringRef Str = LibcallImpl->getLibcallFuncName();
-      OS.indent(2) << Table.GetStringOffset(Str) << ", // " << Str << "\n";
+      OS.indent(2) << Table.GetStringOffset(
+                        (Str + Twine(" /* ") + Twine(Idx++) + Twine(" */ ")).str())
+                   << ", // " << Str << "\n";
     }
     OS << "};\n";
     OS << "const uint8_t TargetLibraryInfoImpl::StandardNamesSizeTable["
@@ -679,9 +740,12 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
     OS << "uint8_t TargetLibraryInfoImpl::getImplIndex(LibFunc &F) const {\n";
     OS.indent(2) << "uint8_t LibFunc2Impl[" << Libcall2Impl.size() << "] = {\n";
     OS << indent(4);
-    for (size_t I = 0; I < Libcall2Impl.size(); ++I)
-      OS << Libcall2Impl[I] << ", ";
-    OS << "\n";
+    OS << "0, // NotLibFunc\n";
+    for (size_t I = 1; I < Libcall2Impl.size(); ++I)
+      OS << Libcall2Impl[I] << ", // LibFunc_" 
+         << TargetLibcallList[I-1]->getLibFuncEnumName() << " : "
+         << TargetLibcallImplList[Libcall2Impl[I] - 1]->getLibcallFuncName()
+         << "\n";
     OS.indent(2) << "};\n";
 
     ArrayRef<const Record *> AllLibs =
@@ -748,16 +812,15 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
         for (const RuntimeLibcallImpl *LibcallImpl : Funcs) {
           const RuntimeLibcall *Provides = LibcallImpl->getProvides();
           auto ItLibcall = llvm::find(TargetLibcallList, Provides);
-          // Need to change the Standard name
-          if (ItLibcall != TargetLibcallList.end() &&
-              LibcallImpl->getLibcallFuncName() != Provides->getLibcallFuncName()) {
+          if (ItLibcall != TargetLibcallList.end()) {
             auto ItLibcallImpl = llvm::find(TargetLibcallImplList, LibcallImpl);
             if (ItLibcallImpl == TargetLibcallImplList.end())
               PrintError(LibcallImpl->getDef(), "TargetLibcallImpl does not have a TargetLibcall.");
-
             size_t IdxLibcall = ItLibcall - TargetLibcallList.begin();            
             size_t IdxLibcallImpl = ItLibcallImpl - TargetLibcallImplList.begin();
-            RenameIndices.push_back({IdxLibcall + 1, IdxLibcallImpl});
+            // Need to change the Standard name
+            if (IdxLibcallImpl + 1 != Libcall2Impl[IdxLibcall + 1])
+              RenameIndices.push_back({IdxLibcall, IdxLibcallImpl});
           }
         }
 
@@ -768,8 +831,16 @@ void RuntimeLibcallEmitter::emitTargetLibraryInfo(raw_ostream &OS) const {
             SubsetPredicate.emitIf(OS);
           }
           for (auto Indices : RenameIndices)
-            OS.indent(IndentDepth+6) << "LibFunc2Impl[" << Indices.first << "] = "
-                                     << Indices.second << ";\n";
+            OS.indent(IndentDepth+6)
+                << "LibFunc2Impl[" << Indices.first + 1 << "] = "
+                << Indices.second + 1 << "; // LibFunc_"
+                << TargetLibcallList[Indices.first]->getLibFuncEnumName()
+                << " : "
+                << TargetLibcallImplList[Libcall2Impl[Indices.first + 1] - 1]
+                     ->getLibcallFuncName()
+                << " -> "
+                << TargetLibcallImplList[Indices.second]->getLibcallFuncName()
+                << "\n";
           if (!SubsetPredicate.isAlwaysAvailable()) {
             OS << indent(IndentDepth);
             SubsetPredicate.emitEndIf(OS);
@@ -802,7 +873,6 @@ void RuntimeLibcallEmitter::run(raw_ostream &OS) {
 */
 
   emitRuntimeLibcallSummary(OS);
-  //emitGetRuntimeLibcallEnum(OS);
   //emitTargetLibraryInfo(OS);
 }
 

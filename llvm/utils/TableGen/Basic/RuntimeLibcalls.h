@@ -79,8 +79,8 @@ public:
 
   StringRef getName() const { return TheDef->getName(); }
 
-  StringRef getLibcallFuncName() const {
-    return TheDef->getValueAsString("String");
+  StringRef getLibFuncEnumName() const {
+    return TheDef->getValueAsString("LibFuncEnumName");
   }
 
   size_t getEnumVal() const { return EnumVal; }
