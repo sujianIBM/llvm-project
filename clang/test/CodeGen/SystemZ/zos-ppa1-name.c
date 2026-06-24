@@ -1,3 +1,5 @@
+// REQUIRES: systemz-registered-target
+
 // test default
 // RUN: %clang_cc1 -triple s390x-ibm-zos -emit-llvm %s -o -\
 // RUN:   | FileCheck %s -check-prefix=PPA1-NAME
