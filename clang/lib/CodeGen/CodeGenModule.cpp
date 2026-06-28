@@ -3620,12 +3620,6 @@ void CodeGenModule::SetFunctionAttributes(GlobalDecl GD, llvm::Function *F,
                                                CalleeIdx, PayloadIndices,
                                                /* VarArgsArePassed */ false)}));
   }
-
-  // -Oz implies -mno-zos-ppa1-name on z/OS
-  if (getTriple().isOSzOS() &&
-      (!LangOpts.ZOSPPA1Name ||
-       (!F->hasOptNone() && CodeGenOpts.OptimizeSize == 2)))
-    F->addFnAttr("zos-ppa1-no-name");
 }
 
 void CodeGenModule::addUsedGlobal(llvm::GlobalValue *GV) {

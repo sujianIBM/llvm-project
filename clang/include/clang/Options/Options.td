@@ -6068,10 +6068,12 @@ defm backchain : BoolMOption<"backchain",
   PosFlag<SetTrue, [], [ClangOption], "Link stack frames through backchain on System Z">,
   NegFlag<SetFalse>, BothFlags<[], [ClangOption, CC1Option]>>;
 
-defm zos_ppa1_name : BoolMOption<"zos-ppa1-name", LangOpts<"ZOSPPA1Name">, DefaultTrue,
-  PosFlag<SetTrue, [], [], "Emit the function name in PPA1 on z/OS">,
-  NegFlag<SetFalse, [], [], "Do not emit the function name in PPA1 on z/OS">,
-  BothFlags<[], [ClangOption, CC1Option]>>;
+def mzos_ppa1_name : Flag<["-"], "mzos-ppa1-name">, Group<m_Group>,
+  Flags<[TargetSpecific]>, Visibility<[ClangOption, CC1Option]>,
+  HelpText<"Emit the function name in PPA1 on z/OS">;
+def mno_zos_ppa1_name : Flag<["-"], "mno-zos-ppa1-name">, Group<m_Group>,
+  Flags<[TargetSpecific]>, Visibility<[ClangOption, CC1Option]>,
+  HelpText<"Do not emit the function name in PPA1 on z/OS">;
 
 def mno_warn_nonportable_cfstrings : Flag<["-"], "mno-warn-nonportable-cfstrings">, Group<m_Group>;
 def mno_omit_leaf_frame_pointer : Flag<["-"], "mno-omit-leaf-frame-pointer">, Group<m_Group>;

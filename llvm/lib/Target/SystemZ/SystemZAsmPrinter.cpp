@@ -1756,7 +1756,14 @@ void SystemZAsmPrinter::calculatePPA1() {
                     : "");
 
   // Save the calculated values.
-  bool IncludeFunctionName = !MF->getFunction().hasFnAttribute("zos-ppa1-no-name");
+  // Whether to emit the function name is decided by optimization level,
+  // unless it is explicitly required via -m[no-]zos-ppa1-name options.
+  bool IncludeFunctionName = !MF->getFunction().hasMinSize();
+  if (MF->getFunction().hasFnAttribute("zos-ppa1-name")) {
+    auto ZOSPPA1Name =
+        MF->getFunction().getFnAttribute("zos-ppa1-name").getValueAsString();
+    IncludeFunctionName = ZOSPPA1Name == "true";
+  }
   if (MF->getFunction().hasName() && IncludeFunctionName)
     Info.Name = MF->getFunction().getName();
   Info.PPA1 = OutContext.createTempSymbol(Twine("PPA1_").concat(N), true);

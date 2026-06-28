@@ -51,26 +51,10 @@ entry:
   ret void
 }
 
+; Attribute "zos-ppa1-name"="false" removes the function name from PPA1.
 ; CHECK: * PPA1
 ; CHECK-NEXT: L#PPA1_void_test_no_name_0 DS 0H
-; CHECK-NEXT: * Version
-; CHECK-NEXT:  DC XL1'02'
-; CHECK-NEXT: * LE Signature X'CE'
-; CHECK-NEXT:  DC XL1'CE'
-; CHECK-NEXT: * Saved GPR Mask
-; CHECK-NEXT:  DC XL2'0000'
-; CHECK-NEXT: * Offset to PPA2
-; CHECK-NEXT:  DC AD(L#PPA2-L#PPA1_void_test_no_name_0)
-; CHECK-NEXT: * PPA1 Flags 1
-; CHECK-NEXT: *   Bit 0: 1 = 64-bit DSA
-; CHECK-NEXT:  DC XL1'80'
-; CHECK-NEXT: * PPA1 Flags 2
-; CHECK-NEXT: *   Bit 0: 1 = External procedure
-; CHECK-NEXT: *   Bit 3: 0 = STACKPROTECT is not enabled
-; CHECK-NEXT:  DC XL1'80'
-; CHECK-NEXT: * PPA1 Flags 3
-; CHECK-NEXT:  DC XL1'00'
-; CHECK-NEXT: * PPA1 Flags 4
+; CHECK:      * PPA1 Flags 4
 ; CHECK-NEXT:  DC XL1'80'
 ; CHECK-NEXT: * Length/4 of Parms
 ; CHECK-NEXT:  DC XL2'0000'
@@ -81,4 +65,42 @@ define void @void_test_no_name() #0 {
 entry:
   ret void
 }
-attributes #0 = { "zos-ppa1-no-name" }
+attributes #0 = { "zos-ppa1-name"="false" }
+
+; Attribute minsize removes the function name from PPA1.
+; CHECK: * PPA1
+; CHECK-NEXT: L#PPA1_void_test_minsize_0 DS 0H
+; CHECK:      * PPA1 Flags 4
+; CHECK-NEXT:  DC XL1'80'
+; CHECK-NEXT: * Length/4 of Parms
+; CHECK-NEXT:  DC XL2'0000'
+; CHECK-NEXT: * Length of Code
+; CHECK-NEXT:  DC AD(L#void_test_minsize_end_0-L#EPM_void_test_minsize_0)
+; CHECK-NEXT:  DC AD(L#EPM_void_test_minsize_0-L#PPA1_void_test_minsize_0)
+define void @void_test_minsize() #1 {
+entry:
+  ret void
+}
+attributes #1 = { minsize }
+
+; Attribute "zos-ppa1-name"="true" takes precedence over minsize,
+; and thus emits the function name in PPA1.
+; CHECK: * PPA1
+; CHECK-NEXT: L#PPA1_void_test_name_0 DS 0H
+; CHECK: * PPA1 Flags 4
+; CHECK-NEXT: *   Bit 7: 1 = Name Length and Name
+; CHECK-NEXT:  DC XL1'81'
+; CHECK-NEXT: * Length/4 of Parms
+; CHECK-NEXT:  DC XL2'0000'
+; CHECK-NEXT: * Length of Code
+; CHECK-NEXT:  DC AD(L#void_test_name_end_0-L#EPM_void_test_name_0)
+; CHECK-NEXT: * Length of Name
+; CHECK-NEXT:  DC XL2'000E'
+; CHECK-NEXT: * Name of Function
+; CHECK-NEXT:  DC XL14'A59689846DA385A2A36D95819485'
+; CHECK-NEXT: DC AD(L#EPM_void_test_name_0-L#PPA1_void_test_name_0)
+define void @void_test_name() #2 {
+entry:
+  ret void
+}
+attributes #2 = { "zos-ppa1-name"="true" minsize }
