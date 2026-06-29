@@ -4234,10 +4234,7 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
 
   if (const Arg *A = Args.getLastArg(OPT_mzos_ppa1_name,
                                      OPT_mno_zos_ppa1_name)) {
-    if (!T.isOSzOS())
-      Diags.Report(diag::err_drv_unsupported_opt_for_target)
-          << A->getAsString(Args) << T.getArchName();
-    else {
+    if (T.isOSzOS()) {
      if (A->getOption().matches(OPT_mzos_ppa1_name))
        Opts.setZOSPPA1Name(LangOptions::ZOSPPA1NameKind::Emit);
      else
