@@ -4232,13 +4232,13 @@ bool CompilerInvocation::ParseLangArgs(LangOptions &Opts, ArgList &Args,
   if (T.isOSAIX() && (Args.hasArg(OPT_mignore_xcoff_visibility)))
     Opts.IgnoreXCOFFVisibility = 1;
 
-  if (const Arg *A = Args.getLastArg(OPT_mzos_ppa1_name,
-                                     OPT_mno_zos_ppa1_name)) {
-    if (T.isOSzOS()) {
-     if (A->getOption().matches(OPT_mzos_ppa1_name))
-       Opts.setZOSPPA1Name(LangOptions::ZOSPPA1NameKind::Emit);
-     else
-       Opts.setZOSPPA1Name(LangOptions::ZOSPPA1NameKind::NoEmit);
+  if (T.isOSzOS()) {
+    if (const Arg *A = Args.getLastArg(OPT_mzos_ppa1_name,
+                                       OPT_mno_zos_ppa1_name)) {
+      if (A->getOption().matches(OPT_mzos_ppa1_name))
+        Opts.setZOSPPA1Name(LangOptions::ZOSPPA1NameKind::Emit);
+      else
+        Opts.setZOSPPA1Name(LangOptions::ZOSPPA1NameKind::NoEmit);
     }
   }
 

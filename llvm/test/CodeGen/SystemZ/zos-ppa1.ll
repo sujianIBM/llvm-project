@@ -51,7 +51,7 @@ entry:
   ret void
 }
 
-; Attribute "zos-ppa1-name"="false" removes the function name from PPA1.
+; Attribute "zos-ppa1-name"="no-emit" removes the function name from PPA1.
 ; CHECK: * PPA1
 ; CHECK-NEXT: L#PPA1_void_test_no_name_0 DS 0H
 ; CHECK:      * PPA1 Flags 4
@@ -65,7 +65,7 @@ define void @void_test_no_name() #0 {
 entry:
   ret void
 }
-attributes #0 = { "zos-ppa1-name"="false" }
+attributes #0 = { "zos-ppa1-name"="no-emit" }
 
 ; Attribute minsize removes the function name from PPA1.
 ; CHECK: * PPA1
@@ -83,7 +83,7 @@ entry:
 }
 attributes #1 = { minsize }
 
-; Attribute "zos-ppa1-name"="true" takes precedence over minsize,
+; Attribute "zos-ppa1-name"="emit" takes precedence over minsize,
 ; and thus emits the function name in PPA1.
 ; CHECK: * PPA1
 ; CHECK-NEXT: L#PPA1_void_test_name_0 DS 0H
@@ -103,4 +103,4 @@ define void @void_test_name() #2 {
 entry:
   ret void
 }
-attributes #2 = { "zos-ppa1-name"="true" minsize }
+attributes #2 = { "zos-ppa1-name"="emit" minsize }

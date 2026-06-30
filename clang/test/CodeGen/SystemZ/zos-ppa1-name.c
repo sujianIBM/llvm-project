@@ -11,8 +11,8 @@
 // RUN:   | FileCheck %s -check-prefix=NOT-EMIT-NAME
 
 // DEFAULT-NOT: attributes #0 = {{{.*}}"zos-ppa1-name"{{.*}}}
-// EMIT-NAME: attributes #0 = {{{.*}}"zos-ppa1-name"="true"{{.*}}}
-// NOT-EMIT-NAME: attributes #0 = {{{.*}}"zos-ppa1-name"="false"{{.*}}}
+// EMIT-NAME: attributes #0 = {{{.*}}"zos-ppa1-name"="emit"{{.*}}}
+// NOT-EMIT-NAME: attributes #0 = {{{.*}}"zos-ppa1-name"="no-emit"{{.*}}}
 
 int main() {
   return 0;

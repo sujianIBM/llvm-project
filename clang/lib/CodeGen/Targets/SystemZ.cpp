@@ -602,9 +602,9 @@ public:
       if (auto *Fn = dyn_cast<llvm::Function>(GV)) {
         auto ZOSPPA1Name = M.getLangOpts().getZOSPPA1Name();
         if (ZOSPPA1Name == clang::LangOptions::ZOSPPA1NameKind::Emit)
-          Fn->addFnAttr("zos-ppa1-name", "true");
+          Fn->addFnAttr("zos-ppa1-name", "emit");
         else if (ZOSPPA1Name == clang::LangOptions::ZOSPPA1NameKind::NoEmit)
-          Fn->addFnAttr("zos-ppa1-name", "false");
+          Fn->addFnAttr("zos-ppa1-name", "no-emit");
       }
     }
   }
