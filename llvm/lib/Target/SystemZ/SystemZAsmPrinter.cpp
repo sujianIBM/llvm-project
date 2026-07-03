@@ -1762,9 +1762,9 @@ void SystemZAsmPrinter::calculatePPA1() {
   if (MF->getFunction().hasFnAttribute("zos-ppa1-name")) {
     auto ZOSPPA1Name =
         MF->getFunction().getFnAttribute("zos-ppa1-name").getValueAsString();
-    assert((ZOSPPA1Name == "emit" || ZOSPPA1Name == "no-emit") &&
+    assert((ZOSPPA1Name == "all" || ZOSPPA1Name == "none") &&
            "Invalid value for attribute zos-ppa1-name.");
-    IncludeFunctionName = ZOSPPA1Name == "emit";
+    IncludeFunctionName = ZOSPPA1Name == "all";
   }
   if (MF->getFunction().hasName() && IncludeFunctionName)
     Info.Name = MF->getFunction().getName();
