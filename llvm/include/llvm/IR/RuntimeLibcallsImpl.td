@@ -87,9 +87,10 @@ class RuntimeLibcall<FuncArgType RetType = NoneType,
 // Concrete implementation of a libcall, which may have a different
 // name and only be valid on some subset of targets.
 
-class RuntimeLibcallImpl<RuntimeLibcall P, string Name = NAME> {
+class RuntimeLibcallImpl<RuntimeLibcall P, string FuncName = NAME, string EnumName = ""> {
   RuntimeLibcall Provides = P;
-  string LibCallFuncName = Name;
+  string LibCallFuncName = !if(!eq(FuncName, "NAME"), NAME, FuncName);
+  string LibCallEnumName = EnumName;
   bit IsDefault = false;
 }
 
