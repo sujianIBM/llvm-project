@@ -43,6 +43,7 @@ public:
 
 TargetLibraryInfoEmitter::TargetLibraryInfoEmitter(const RecordKeeper &R)
     : Records(R) {
+/*
   ArrayRef<const Record *> All =
       Records.getAllDerivedDefinitions("TargetLibCall");
   AllTargetLibcalls.append(All.begin(), All.end());
@@ -51,22 +52,52 @@ TargetLibraryInfoEmitter::TargetLibraryInfoEmitter(const RecordKeeper &R)
   sort(AllTargetLibcalls, [](const Record *A, const Record *B) {
     return A->getID() < B->getID();
   });
+*/
+
+  ArrayRef<const Record *> AllLibs =
+      Records.getAllDerivedDefinitions("TLILibrary");
+
+  // There is only one library now.
+  // TODO: use the predicate.
+  for (const Record *Lib : AllLibs) {
+
+    SetTheory ST;
+    SetTheory::RecSet Impls;
+    ST.evaluate(Lib->getValueInit("MemberList"), Impls, Lib->getLoc());
+
+    for (const Record *LibcallImpl : Impls) {
+      const Record *Libcall = LibcallImpl->getValueAsDef("Provides");
+      StringRef EnumName = Libcall->getValueAsString("LibFuncEnumName");
+      if (!EnumName.empty() && !EnumName.contains("_none_enum"))
+        AllTargetLibcalls.push_back(LibcallImpl);
+    }
+
+    sort(AllTargetLibcalls, [](const Record *A, const Record *B) {
+      return A->getID() < B->getID();
+    });
+  }
+}
+
+static StringRef getEnumName(const Record *R) {
+  R = R->getValueAsDef("Provides");
+  return R->getValueAsString("LibFuncEnumName");
 }
 
 // Emits the LibFunc enumeration, which is an abstract name for each library
 // function.
 void TargetLibraryInfoEmitter::emitTargetLibraryInfoEnum(
     raw_ostream &OS) const {
+
   IfDefEmitter IfDef(OS, "GET_TARGET_LIBRARY_INFO_ENUM");
   OS << "enum LibFunc : unsigned {\n";
   OS.indent(2) << "NotLibFunc = 0,\n";
   for (const auto *R : AllTargetLibcalls)
-    OS.indent(2) << "LibFunc_" << R->getName().drop_front(4) << ",\n";
+    OS.indent(2) << "LibFunc_" << getEnumName(R) << ",\n";
   OS.indent(2) << "NumLibFuncs,\n";
   OS.indent(2) << "End_LibFunc = NumLibFuncs,\n";
   if (AllTargetLibcalls.size()) {
     OS.indent(2) << "Begin_LibFunc = LibFunc_"
-                 << AllTargetLibcalls[0]->getName().drop_front(4) << ",\n";
+                 << getEnumName(AllTargetLibcalls[0]) << ",\n";
   } else {
     OS.indent(2) << "Begin_LibFunc = NotLibFunc,\n";
   }
@@ -79,16 +110,11 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoEnum(
 void TargetLibraryInfoEmitter::emitTargetLibraryInfoStringTable(
     raw_ostream &OS) const {
 
-  auto getFuncName = [](const Record *R) -> StringRef {
-    R = R->getValueAsDef("RTLibcallImpl");
-    return R->getValueAsString("LibCallFuncName");
-  };
-
   llvm::StringToOffsetTable Table(
       /*AppendZero=*/true,
       "TargetLibraryInfoImpl::", /*UsePrefixForStorageMember=*/false);
   for (const auto *R : AllTargetLibcalls)
-    Table.GetOrAddStringOffset(getFuncName(R));
+    Table.GetOrAddStringOffset(R->getValueAsString("LibCallFuncName"));
 
   size_t NumEl = AllTargetLibcalls.size() + 1;
 
@@ -103,7 +129,7 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoStringTable(
           "{\n";
     OS.indent(2) << "0, //\n";
     for (const auto *R : AllTargetLibcalls) {
-      StringRef Str = getFuncName(R);
+      StringRef Str = R->getValueAsString("LibCallFuncName");
       OS.indent(2) << Table.GetStringOffset(Str) << ", // " << Str << "\n";
     }
     OS << "};\n";
@@ -111,7 +137,7 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoStringTable(
        << NumEl << "] = {\n";
     OS << "  0,\n";
     for (const auto *R : AllTargetLibcalls)
-      OS.indent(2) << getFuncName(R).size() << ",\n";
+      OS.indent(2) << R->getValueAsString("LibCallFuncName").size() << ",\n";
     OS << "};\n";
   }
 
@@ -139,7 +165,7 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoSignatureTable(
   using Signature = std::vector<StringRef>;
   SequenceToOffsetTable<Signature> SignatureTable("NoFuncArgType");
   auto GetSignature = [](const Record *R) -> Signature {
-    R = R->getValueAsDef("RTLibcallImpl")->getValueAsDef("Provides");
+    R = R->getValueAsDef("Provides");
     const auto *Tys = R->getValueAsListInit("ArgumentTypes");
     Signature Sig;
     Sig.reserve(Tys->size() + 1);
@@ -173,7 +199,7 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoSignatureTable(
   OS.indent(2) << SignatureTable.get(NoFuncSig) << ", //\n";
   for (const auto *R : AllTargetLibcalls) {
     OS.indent(2) << SignatureTable.get(GetSignature(R)) << ", // "
-                 << R->getName().drop_front(4) << "\n";
+                 << getEnumName(R) << "\n";
   }
   OS << "};\n";
 }

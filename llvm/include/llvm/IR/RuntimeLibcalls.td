@@ -121,9 +121,9 @@ class TypeSuffix<string S, string SL, FuncArgType Ty> {
 }
 def F32 : TypeSuffix<"F32", "f", Flt>;
 def F64 : TypeSuffix<"F64", "", Dbl>;
-def F80 : TypeSuffix<"F80", "_none_enum", LDbl>;
+def F80 : TypeSuffix<"F80", "l", LDbl>;
 def F128 : TypeSuffix<"F128", "l", LDbl>;
-def PPCF128 : TypeSuffix<"PPCF128", "_none_enum",LDbl>;
+def PPCF128 : TypeSuffix<"PPCF128", "l",LDbl>;
 
 foreach FPTy = [F32, F64, F80, F128, PPCF128] in {
   def ADD_#FPTy.Suffix : RuntimeLibcall;
@@ -561,6 +561,7 @@ def MIPS16_RET_SF : RuntimeLibcall;
 // If not provided, it is appended to the def name.
 multiclass LibmLibcallImpls<string libcall_basename = !toupper(NAME),
                             string rtbasename = !strconcat(NAME, "<typesuffix>")> {
+  let IsTLI = true in {
   def NAME#"f"
       : RuntimeLibcallImpl<!cast<RuntimeLibcall>(libcall_basename#"_F32"),
                            !subst("<typesuffix>", "f", rtbasename)>;
@@ -570,6 +571,7 @@ multiclass LibmLibcallImpls<string libcall_basename = !toupper(NAME),
   def NAME#"l_f128"
       : RuntimeLibcallImpl<!cast<RuntimeLibcall>(libcall_basename#"_F128"),
                            !subst("<typesuffix>", "l", rtbasename)>;
+  }
   def NAME#"l_ppcf128"
       : RuntimeLibcallImpl<!cast<RuntimeLibcall>(libcall_basename#"_PPCF128"),
                            !subst("<typesuffix>", "l", rtbasename)>;
@@ -1331,6 +1333,8 @@ def __stack_chk_fail : RuntimeLibcallImpl<STACKPROTECTOR_CHECK_FAIL>;
 ///
 // --------------------------------------------------------------------
 
+let IsTLI = true in {
+
 def __2_YAPAXI_Z : RuntimeLibcallImpl<MSVC_NEW_INT, "??2@YAPAXI@Z">;
 def __2_YAPAXIABUnothrow_t_std___Z
     : RuntimeLibcallImpl<MSVC_NEW_INT_NOTHROW,
@@ -1667,6 +1671,8 @@ def vsscanf : RuntimeLibcallImpl<VSSCANF>;
 def wcslen : RuntimeLibcallImpl<WCSLEN>;
 def write : RuntimeLibcallImpl<WRITE>;
 
+} // End let IsTLI = true
+
 defm __acos_finite : LibmLibcallImpls<"ACOS_FINITE", "__acos<typesuffix>_finite">;
 defm __acosh_finite : LibmLibcallImpls<"ACOSH_FINITE", "__acosh<typesuffix>_finite">;
 defm __asin_finite : LibmLibcallImpls<"ASIN_FINITE", "__asin<typesuffix>_finite">;
@@ -1690,10 +1696,13 @@ defm ilogb : LibmLibcallImpls;
 defm logb : LibmLibcallImpls;
 defm nextafter : LibmLibcallImpls;
 
-def __nvvm_reflect : RuntimeLibcallImpl<NVVM_REFLECT>;
+let IsTLI = true in {
 
+def __nvvm_reflect : RuntimeLibcallImpl<NVVM_REFLECT>;
 def __sincospif_stret : RuntimeLibcallImpl<SINCOSPI_STRET_F32>;
 def __sincospi_stret : RuntimeLibcallImpl<SINCOSPI_STRET_F64>;
+
+}
 
 //--------------------------------------------------------------------
 // compiler-rt/libgcc but 64-bit only, not available by default
@@ -4444,3 +4453,15 @@ defset list<RuntimeLibcallImpl> AMDLIBM_VECFUNCS = {
   def amd_vrd4_round : RuntimeLibcallImpl<ROUND_V4F64>;
   def amd_vrd8_round : RuntimeLibcallImpl<ROUND_V8F64>;
 }
+
+//===----------------------------------------------------------------------===//
+// TargetLibraryInfo
+//===----------------------------------------------------------------------===//
+
+defvar TLIRuntimeLibcallImplsBase
+  = !filter(entry, !instances<RuntimeLibcallImpl>(), entry.IsTLI);
+defvar TLIRuntimeLibcallImpls = (add TLIRuntimeLibcallImplsBase,
+                                     DefaultRuntimeLibcallImplsBaseList,
+                                     bzero);
+
+def LegacyTLILibrary : TLILibrary<AlwaysAvailable, TLIRuntimeLibcallImpls>;
