@@ -68,7 +68,7 @@ TargetLibraryInfoEmitter::TargetLibraryInfoEmitter(const RecordKeeper &R)
     for (const Record *LibcallImpl : Impls) {
       const Record *Libcall = LibcallImpl->getValueAsDef("Provides");
       StringRef EnumName = Libcall->getValueAsString("LibFuncEnumName");
-      if (!EnumName.empty() && !EnumName.contains("_none_enum"))
+      if (!EnumName.empty())
         AllTargetLibcalls.push_back(LibcallImpl);
     }
 
