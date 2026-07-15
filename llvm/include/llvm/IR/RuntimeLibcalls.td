@@ -121,9 +121,9 @@ class TypeSuffix<string S, string SL, FuncArgType Ty> {
 }
 def F32 : TypeSuffix<"F32", "f", Flt>;
 def F64 : TypeSuffix<"F64", "", Dbl>;
-def F80 : TypeSuffix<"F80", "l", LDbl>;
+def F80 : TypeSuffix<"F80", "_none_enum", LDbl>;
 def F128 : TypeSuffix<"F128", "l", LDbl>;
-def PPCF128 : TypeSuffix<"PPCF128", "l",LDbl>;
+def PPCF128 : TypeSuffix<"PPCF128", "_none_enum", LDbl>;
 
 foreach FPTy = [F32, F64, F80, F128, PPCF128] in {
   def ADD_#FPTy.Suffix : RuntimeLibcall;
