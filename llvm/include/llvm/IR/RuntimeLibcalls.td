@@ -4464,4 +4464,7 @@ defvar TLIRuntimeLibcallImpls = (add TLIRuntimeLibcallImplsBase,
                                      DefaultRuntimeLibcallImplsBaseList,
                                      bzero);
 
-def LegacyTLILibrary : TLILibrary<AlwaysAvailable, TLIRuntimeLibcallImpls>;
+def isDefaultTLI : RuntimeLibcallPredicate<"!(TT.isSystemZ() && TT.isOSzOS())">;
+def LegacyTLILibrary : TLILibrary<isDefaultTLI, TLIRuntimeLibcallImpls>;
+
+def SystemZZOSTLILibrary : TLILibrary<isSystemZZOS, (add ZOSRuntimeLibcalls)>;

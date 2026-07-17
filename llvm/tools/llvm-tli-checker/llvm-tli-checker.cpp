@@ -138,7 +138,7 @@ static void dumpTLIEntries(const TargetLibraryInfo &TLI) {
       printPrintableName(outs(), TLI.getName(LF));
     } else {
       // If it's not available, refer to it by the standard name.
-      printPrintableName(outs(), TargetLibraryInfo::getStandardName(LF));
+      printPrintableName(outs(), TLI.getStandardName(LF));
     }
 
     outs() << '\n';
