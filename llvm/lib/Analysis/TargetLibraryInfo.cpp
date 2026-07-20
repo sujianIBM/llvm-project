@@ -129,6 +129,8 @@ static void initializeBase(TargetLibraryInfoImpl &TLI, const Triple &T) {
 static void initializeLibCalls(TargetLibraryInfoImpl &TLI, const Triple &T,
                                const llvm::StringTable &StandardNames,
                                VectorLibrary VecLib) {
+  TLI.setTargetLibraryLibcallSets(T);
+
   // Set IO unlocked variants as unavailable
   // Set them as available per system below
   TLI.setUnavailable(LibFunc_getc_unlocked);

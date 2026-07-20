@@ -41,11 +41,22 @@ public:
 
 } // End anonymous namespace.
 
+static StringRef getEnumName(const Record *Libcall) {
+  return Libcall->getValueAsString("LibFuncEnumName");
+}
+
 TargetLibraryInfoEmitter::TargetLibraryInfoEmitter(const RecordKeeper &R)
     : Records(R) {
   ArrayRef<const Record *> All =
-      Records.getAllDerivedDefinitions("TargetLibCall");
-  AllTargetLibcalls.append(All.begin(), All.end());
+      Records.getAllDerivedDefinitions("RuntimeLibcall");
+  // AllTargetLibcalls.append(All.begin(), All.end());
+
+  for (const Record *R : All) {
+    StringRef EnumName = getEnumName(R);
+    if (!EnumName.empty() && !EnumName.contains("_none_enum"))
+      AllTargetLibcalls.push_back(R);
+  }
+
   // Make sure that the records are in the same order as the input.
   // TODO Find a better sorting order when all is migrated.
   sort(AllTargetLibcalls, [](const Record *A, const Record *B) {
@@ -57,16 +68,17 @@ TargetLibraryInfoEmitter::TargetLibraryInfoEmitter(const RecordKeeper &R)
 // function.
 void TargetLibraryInfoEmitter::emitTargetLibraryInfoEnum(
     raw_ostream &OS) const {
+
   IfDefEmitter IfDef(OS, "GET_TARGET_LIBRARY_INFO_ENUM");
   OS << "enum LibFunc : unsigned {\n";
   OS.indent(2) << "NotLibFunc = 0,\n";
   for (const auto *R : AllTargetLibcalls)
-    OS.indent(2) << "LibFunc_" << R->getName().drop_front(4) << ",\n";
+    OS.indent(2) << "LibFunc_" << getEnumName(R) << ",\n";
   OS.indent(2) << "NumLibFuncs,\n";
   OS.indent(2) << "End_LibFunc = NumLibFuncs,\n";
   if (AllTargetLibcalls.size()) {
     OS.indent(2) << "Begin_LibFunc = LibFunc_"
-                 << AllTargetLibcalls[0]->getName().drop_front(4) << ",\n";
+                 << getEnumName(AllTargetLibcalls[0]) << ",\n";
   } else {
     OS.indent(2) << "Begin_LibFunc = NotLibFunc,\n";
   }
@@ -79,48 +91,80 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoEnum(
 void TargetLibraryInfoEmitter::emitTargetLibraryInfoStringTable(
     raw_ostream &OS) const {
 
-  auto getFuncName = [](const Record *R) -> StringRef {
-    R = R->getValueAsDef("RTLibcallImpl");
-    return R->getValueAsString("LibCallFuncName");
-  };
-
-  llvm::StringToOffsetTable Table(
-      /*AppendZero=*/true,
-      "TargetLibraryInfoImpl::", /*UsePrefixForStorageMember=*/false);
-  for (const auto *R : AllTargetLibcalls)
-    Table.GetOrAddStringOffset(getFuncName(R));
+  ArrayRef<const Record *> AllLibs =
+      Records.getAllDerivedDefinitions("TLILibrary");
+  DenseMap<const Record *, const Record *> Libcall2Impl;
 
   size_t NumEl = AllTargetLibcalls.size() + 1;
 
+  auto getFuncName = [&Libcall2Impl](const Record *Libcall) -> StringRef {
+    auto It = Libcall2Impl.find(Libcall);
+    if (It == Libcall2Impl.end())
+      return "";
+    return It->second->getValueAsString("LibCallFuncName");
+  };
+
   {
-    IfDefEmitter IfDef(OS, "GET_TARGET_LIBRARY_INFO_STRING_TABLE");
-    Table.EmitStringTableDef(OS, "StandardNamesStrTable");
-    OS << "\n";
-    OS << "const llvm::StringTable::Offset "
-          "TargetLibraryInfoImpl::StandardNamesOffsets["
-       << NumEl
-       << "] = "
-          "{\n";
-    OS.indent(2) << "0, //\n";
-    for (const auto *R : AllTargetLibcalls) {
-      StringRef Str = getFuncName(R);
-      OS.indent(2) << Table.GetStringOffset(Str) << ", // " << Str << "\n";
+    IfDefEmitter IfDef(OS, "GET_TARGET_LIBRARY_INFO_STRING_TABLE"); 
+
+    OS << "void TargetLibraryInfoImpl::setTargetLibraryLibcallSets("
+          "const Triple &TT) {\n";
+    for (const Record *Lib : AllLibs) {
+
+      const Record *Pred = Lib->getValueAsDef("TriplePred");
+      OS.indent(2) << "if (" << Pred->getValueAsString("Cond") << ") {\n";
+
+      SetTheory ST;
+      SetTheory::RecSet Impls;
+      ST.evaluate(Lib->getValueInit("MemberList"), Impls, Lib->getLoc());
+
+      Libcall2Impl.clear();
+      for (const Record *LibcallImpl : Impls) {
+        const Record *Libcall = LibcallImpl->getValueAsDef("Provides");
+        auto [It, Inserted] = Libcall2Impl.insert({Libcall, LibcallImpl});
+        if (!Inserted)
+          PrintError(Lib, "Libcall " + Libcall->getValueAsString("Name") +
+                          " has more than one Impl");
+      }
+
+      llvm::StringToOffsetTable Table(
+          /*AppendZero=*/true,
+          /*ClassPrefix=*/"", /*UsePrefixForStorageMember=*/false);
+      for (const auto *R : AllTargetLibcalls)
+        Table.GetOrAddStringOffset(getFuncName(R));
+
+      OS.indent(4)
+          << "static constexpr char StandardNamesStrTableStorage[] =\n";
+      Table.EmitString(OS);
+      OS << ";\n";
+      OS.indent(4) << "StandardNamesStrTable = "
+          << "llvm::StringTable(StandardNamesStrTableStorage);\n";
+      OS.indent(4) << "StandardNamesOffsets = {\n";
+      OS.indent(6) << "0, //\n";
+      for (const auto *R : AllTargetLibcalls) {
+        StringRef Str = getFuncName(R);
+        OS.indent(6) << Table.GetStringOffset(Str) << ", // " << Str << "\n";
+      }
+      OS.indent(4) << "};\n";
+      OS.indent(4) << "StandardNamesSizeTable = {\n";
+      OS.indent(4) << "  0,\n";
+      for (const auto *R : AllTargetLibcalls)
+        OS.indent(6) << getFuncName(R).size() << ",\n";
+      OS.indent(4) << "};\n";
+
+      OS.indent(4) << "return;\n";
+      OS.indent(2) << "}\n";  // end of if (...)
     }
-    OS << "};\n";
-    OS << "const uint8_t TargetLibraryInfoImpl::StandardNamesSizeTable["
-       << NumEl << "] = {\n";
-    OS << "  0,\n";
-    for (const auto *R : AllTargetLibcalls)
-      OS.indent(2) << getFuncName(R).size() << ",\n";
-    OS << "};\n";
+    OS.indent(2) << "return;\n";
+    OS << "}\n";  // end of setTargetLibraryLibcallSets()
   }
 
   IfDefEmitter IfDef(OS, "GET_TARGET_LIBRARY_INFO_IMPL_DECL");
-  OS << "LLVM_ABI static const llvm::StringTable StandardNamesStrTable;\n";
-  OS << "LLVM_ABI static const llvm::StringTable::Offset StandardNamesOffsets["
-     << NumEl << "];\n";
-  OS << "LLVM_ABI static const uint8_t StandardNamesSizeTable[" << NumEl
-     << "];\n";
+  OS << "LLVM_ABI llvm::StringTable StandardNamesStrTable{\"\\0\"};\n";
+  OS << "LLVM_ABI std::array<llvm::StringTable::Offset, "
+     << NumEl << "> StandardNamesOffsets;\n";
+  OS << "LLVM_ABI std::array<uint8_t, " << NumEl
+     << "> StandardNamesSizeTable;\n";
 }
 
 // Since there are much less type signatures then library functions, the type
@@ -139,7 +183,6 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoSignatureTable(
   using Signature = std::vector<StringRef>;
   SequenceToOffsetTable<Signature> SignatureTable("NoFuncArgType");
   auto GetSignature = [](const Record *R) -> Signature {
-    R = R->getValueAsDef("RTLibcallImpl")->getValueAsDef("Provides");
     const auto *Tys = R->getValueAsListInit("ArgumentTypes");
     Signature Sig;
     Sig.reserve(Tys->size() + 1);
@@ -173,7 +216,7 @@ void TargetLibraryInfoEmitter::emitTargetLibraryInfoSignatureTable(
   OS.indent(2) << SignatureTable.get(NoFuncSig) << ", //\n";
   for (const auto *R : AllTargetLibcalls) {
     OS.indent(2) << SignatureTable.get(GetSignature(R)) << ", // "
-                 << R->getName().drop_front(4) << "\n";
+                 << getEnumName(R) << "\n";
   }
   OS << "};\n";
 }

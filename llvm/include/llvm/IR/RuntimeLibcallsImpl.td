@@ -77,9 +77,10 @@ def Same : FuncArgType;     // Same argument type as the previous one.
 /// When adding PPCF128 functions here, note that their names generally need
 /// to be overridden for Darwin with the xxx$LDBL128 form.  See
 /// PPCISelLowering.cpp.
-class RuntimeLibcall<FuncArgType RetType = NoneType,
+class RuntimeLibcall<string EnumName = "", FuncArgType RetType = NoneType,
                      list<FuncArgType> ArgTypes = []> {
   string Name = NAME;
+  string LibFuncEnumName = EnumName; // For TargetLibraryInfo
   FuncArgType ReturnType = RetType;
   list<FuncArgType> ArgumentTypes = ArgTypes;
 }
@@ -91,6 +92,7 @@ class RuntimeLibcallImpl<RuntimeLibcall P, string Name = NAME> {
   RuntimeLibcall Provides = P;
   string LibCallFuncName = Name;
   bit IsDefault = false;
+  bit IsTLI = false;
 }
 
 class LibcallImpls<dag funcList,
@@ -128,3 +130,8 @@ class TargetLibCall<RuntimeLibcallImpl LibcallImpl> {
   RuntimeLibcallImpl RTLibcallImpl = LibcallImpl;
 }
 
+/// Define a set of library functions for a target for TargetLibraryInfo.
+class TLILibrary<RuntimeLibcallPredicate Pred, dag funcList> {
+  RuntimeLibcallPredicate TriplePred = Pred;
+  dag MemberList = funcList;
+}
