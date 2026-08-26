@@ -140,7 +140,15 @@ void RuntimeLibcallEmitter::emitGetRuntimeLibcallEnum(raw_ostream &OS) const {
   OS << "};\n"
      << "constexpr size_t NumLibcallImpls = "
      << Libcalls.getRuntimeLibcallImplDefList().size() + 1
-     << ";\n"
+     << ";\n\n"
+        "enum FuncArgTypeID : char {\n";
+        "  NoFuncArgType = 0,\n";
+
+  for (const auto *R : Libcalls.getFuncArgTypeList()) {
+    OS << "  " << R->getName() << ",\n";
+  }
+
+  OS << "};\n"
         "} // End namespace RTLIB\n"
         "} // End namespace llvm\n";
 }
