@@ -79,9 +79,7 @@ RuntimeLibcalls::RuntimeLibcalls(const RecordKeeper &Records) {
     }
   }
 
-  ArrayRef<const Record *> AllFuncArgTypes =
-      Records.getAllDerivedDefinitions("FuncArgType");
-  FuncArgTypeList.append(AllFuncArgTypes.begin(), AllFuncArgTypes.end());
+  FuncArgTypeList = Records.getAllDerivedDefinitions("FuncArgType");
 }
 
 void LibcallPredicateExpander::expand(SetTheory &ST, const Record *Def,

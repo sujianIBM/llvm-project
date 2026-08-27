@@ -24,6 +24,7 @@ using namespace RTLIB;
 
 #define GET_RUNTIME_LIBCALLS_INFO
 #define GET_INIT_RUNTIME_LIBCALL_NAMES
+#define GET_INIT_RUNTIME_LIBCALL_SIGNATURES
 #define GET_SET_TARGET_RUNTIME_LIBCALL_SETS
 #define DEFINE_GET_LOOKUP_LIBCALL_IMPL_NAME
 #define GET_RUNTIME_LIBCALL_INTRINSIC_TO_LIBCALL
@@ -155,10 +156,80 @@ static IntegerType *getSizeTType(LLVMContext &Ctx, const DataLayout &DL) {
   return DL.getIndexType(Ctx, /*AddressSpace=*/0);
 }
 
+static Type *convertToIRType(FuncArgTypeID ID, LLVMContext &Ctx,
+                             const Triple &TT, const DataLayout &DL) {
+
+  unsigned IntBits = TT.isArch16Bit() ? 16 : 32;
+  unsigned LongBits = TT.isArch64Bit() && !TT.isOSWindows()
+                      ? 64  // LP64
+                      : 32; // ILP32 / LLP64
+
+  switch (ID) {
+  case Bool:
+    return IntegerType::get(Ctx, 8);
+  case Dbl:
+    return Type::getDoubleTy(Ctx);
+  case Flt:
+    return Type::getFloatTy(Ctx);
+  case Int:
+    return IntegerType::get(Ctx, IntBits);
+  case Int16:
+    return IntegerType::get(Ctx, 16);
+  case Int32:
+    return IntegerType::get(Ctx, 32);
+  case Int64:
+    return IntegerType::get(Ctx, 64);
+  case IntPlus:
+    return ;
+  case IntX:
+    return ;
+  case LDbl:
+    return ;
+  case LLong:
+    return IntegerType::get(Ctx, 64);
+  case Long:
+    return IntegerType::get(Ctx, LongBits);
+  case Ptr:
+    return PointerType::get(Ctx, 0);
+  case SSizeT:
+  case SizeT:
+    return getSizeTType(Ctx, DL);
+  case Void:
+    return Type::getVoidTy(Ctx);
+  default:
+    return nullprt;
+}
+
 std::pair<FunctionType *, AttributeList>
 RuntimeLibcallsInfo::getFunctionTy(LLVMContext &Ctx, const Triple &TT,
                                    const DataLayout &DL,
                                    RTLIB::LibcallImpl LibcallImpl) const {
+
+  // Get C-type function signature of the Libcall if provided,
+  // and convert it to IR FunctionType.
+  Libcall LC = getLibcallFromImpl(LibcallImpl);
+  FuncArgTypeID *ProtoTypes = &SignatureTable[SignatureOffset[LC]];
+
+  if (ProtoTypes[0] != NoFuncArgType) {
+    Type *RetTy = convertToIRType(ProtoTypes[0], Ctx, TT, DL);
+    SmallVector<Type *, 4> ArgTys;
+    bool IsVarArg(false);
+    unsigned Idx = 1;
+    for (FuncArgTypeID TyID = ProtoTypes[Idx]; TyID != NoFuncArgType;
+         TyID = ProtoTypes[++Idx]) {
+      if (TyID == Ellip) {
+        // The ellipsis ends the protoype list so it must be followed by
+        // NoFuncArgType.
+        assert(ProtoTypes[Idx + 1] == NoFuncArgType);
+        IsVarArg = true;
+        break;
+      }
+      Type *ArgTy = convertToIRType(ProtoTypes[Idx], Ctx, TT, DL);  
+      ArgTys.push_back(ArgTy);
+    }
+    return {FunctionType::get(RetTy, ArgTys, IsVarArg), AttributeList()};
+  }
+
   // TODO: NoCallback probably unsafe in general
   static constexpr Attribute::AttrKind CommonFnAttrs[] = {
       Attribute::NoCallback, Attribute::NoFree, Attribute::NoSync,
