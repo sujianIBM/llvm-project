@@ -160,44 +160,38 @@ static Type *convertToIRType(FuncArgTypeID ID, LLVMContext &Ctx,
                              const Triple &TT, const DataLayout &DL) {
 
   unsigned IntBits = TT.isArch16Bit() ? 16 : 32;
-  unsigned LongBits = TT.isArch64Bit() && !TT.isOSWindows()
-                      ? 64  // LP64
-                      : 32; // ILP32 / LLP64
 
   switch (ID) {
+  case Void:
+    return Type::getVoidTy(Ctx);
   case Bool:
     return IntegerType::get(Ctx, 8);
-  case Dbl:
-    return Type::getDoubleTy(Ctx);
-  case Flt:
-    return Type::getFloatTy(Ctx);
-  case Int:
-    return IntegerType::get(Ctx, IntBits);
   case Int16:
     return IntegerType::get(Ctx, 16);
   case Int32:
     return IntegerType::get(Ctx, 32);
-  case Int64:
-    return IntegerType::get(Ctx, 64);
+  case Int:
   case IntPlus:
-    return ;
+  case Long:
   case IntX:
-    return ;
-  case LDbl:
-    return ;
+    return IntegerType::get(Ctx, IntBits);
   case LLong:
     return IntegerType::get(Ctx, 64);
-  case Long:
-    return IntegerType::get(Ctx, LongBits);
+  case SizeT:
+  case SSizeT:
+    return getSizeTType(Ctx, DL);
+  case Flt:
+  case Floating:
+    return Type::getFloatTy(Ctx);
+  case Dbl:
+  case LDbl:
+    return Type::getDoubleTy(Ctx);
   case Ptr:
     return PointerType::get(Ctx, 0);
-  case SSizeT:
-  case SizeT:
-    return getSizeTType(Ctx, DL);
-  case Void:
-    return Type::getVoidTy(Ctx);
+  case Struct:
+    return nullptr; // This typy is not used.
   default:
-    return nullprt;
+    return nullptr;
 }
 
 std::pair<FunctionType *, AttributeList>
@@ -212,6 +206,7 @@ RuntimeLibcallsInfo::getFunctionTy(LLVMContext &Ctx, const Triple &TT,
 
   if (ProtoTypes[0] != NoFuncArgType) {
     Type *RetTy = convertToIRType(ProtoTypes[0], Ctx, TT, DL);
+    Type *LastTy = RetTy, *ArgTy;
     SmallVector<Type *, 4> ArgTys;
     bool IsVarArg(false);
     unsigned Idx = 1;
@@ -224,7 +219,12 @@ RuntimeLibcallsInfo::getFunctionTy(LLVMContext &Ctx, const Triple &TT,
         IsVarArg = true;
         break;
       }
-      Type *ArgTy = convertToIRType(ProtoTypes[Idx], Ctx, TT, DL);  
+      if (TyID == Same) {
+        ArgTy = LastTy;
+      } else {
+        ArgTy = convertToIRType(ProtoTypes[Idx], Ctx, TT, DL);
+        LastTy = ArgTy;
+      }
       ArgTys.push_back(ArgTy);
     }
     return {FunctionType::get(RetTy, ArgTys, IsVarArg), AttributeList()};
