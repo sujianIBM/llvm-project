@@ -78,6 +78,8 @@ RuntimeLibcalls::RuntimeLibcalls(const RecordKeeper &Records) {
       LibCallToDefaultImpl[Provides] = &LibCallImpl;
     }
   }
+
+  FuncArgTypeList = Records.getAllDerivedDefinitions("FuncArgType");
 }
 
 void LibcallPredicateExpander::expand(SetTheory &ST, const Record *Def,
