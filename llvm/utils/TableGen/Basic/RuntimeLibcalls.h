@@ -176,6 +176,8 @@ private:
   DenseMap<const RuntimeLibcall *, const RuntimeLibcallImpl *>
       LibCallToDefaultImpl;
 
+  std::vector<const Record *> FuncArgTypeList;
+
 public:
   RuntimeLibcalls(const RecordKeeper &Records);
 
@@ -193,6 +195,10 @@ public:
 
   const RuntimeLibcallImpl *getRuntimeLibcallImpl(const Record *Def) const {
     return Def2RuntimeLibcallImpl.lookup(Def);
+  }
+
+  ArrayRef<const Record *> getFuncArgTypeList() const {
+    return FuncArgTypeList;
   }
 };
 
