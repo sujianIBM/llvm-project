@@ -183,6 +183,7 @@ static Type *convertToIRType(FuncArgTypeID ID, LLVMContext &Ctx,
   case Floating:
     return Type::getFloatTy(Ctx);
   case Dbl:
+    return Type::getDoubleTy(Ctx);
   case LDbl:
     return Type::getDoubleTy(Ctx);
   case Ptr:
@@ -198,38 +199,6 @@ std::pair<FunctionType *, AttributeList>
 RuntimeLibcallsInfo::getFunctionTy(LLVMContext &Ctx, const Triple &TT,
                                    const DataLayout &DL,
                                    RTLIB::LibcallImpl LibcallImpl) const {
-
-  // Get C-type function signature of the Libcall if provided,
-  // and convert it to IR FunctionType.
-  Libcall LC = getLibcallFromImpl(LibcallImpl);
-  const FuncArgTypeID *ProtoTypes = &SignatureTable[SignatureOffset[LC]];
-
-  if (ProtoTypes[0] != NoFuncArgType) {
-    Type *RetTy = convertToIRType(ProtoTypes[0], Ctx, TT, DL);
-    Type *LastTy = RetTy, *ArgTy;
-    SmallVector<Type *, 4> ArgTys;
-    bool IsVarArg(false);
-    unsigned Idx = 1;
-    for (FuncArgTypeID TyID = ProtoTypes[Idx]; TyID != NoFuncArgType;
-         TyID = ProtoTypes[++Idx]) {
-      if (TyID == Ellip) {
-        // The ellipsis ends the protoype list so it must be followed by
-        // NoFuncArgType.
-        assert(ProtoTypes[Idx + 1] == NoFuncArgType);
-        IsVarArg = true;
-        break;
-      }
-      if (TyID == Same) {
-        ArgTy = LastTy;
-      } else {
-        ArgTy = convertToIRType(ProtoTypes[Idx], Ctx, TT, DL);
-        LastTy = ArgTy;
-      }
-      ArgTys.push_back(ArgTy);
-    }
-    return {FunctionType::get(RetTy, ArgTys, IsVarArg), AttributeList()};
-  }
-
   // TODO: NoCallback probably unsafe in general
   static constexpr Attribute::AttrKind CommonFnAttrs[] = {
       Attribute::NoCallback, Attribute::NoFree, Attribute::NoSync,
@@ -534,6 +503,37 @@ RuntimeLibcallsInfo::getFunctionTy(LLVMContext &Ctx, const Triple &TT,
     return {FunctionType::get(Type::getVoidTy(Ctx), ArgTys, false), Attrs};
   }
   default:
+    // Get C-type function signature of the Libcall if provided,
+    // and convert it to IR FunctionType.
+    Libcall LC = getLibcallFromImpl(LibcallImpl);
+    const FuncArgTypeID *ProtoTypes = &SignatureTable[SignatureOffset[LC]];
+
+    if (ProtoTypes[0] != NoFuncArgType) {
+      Type *RetTy = convertToIRType(ProtoTypes[0], Ctx, TT, DL);
+      Type *LastTy = RetTy, *ArgTy;
+      SmallVector<Type *, 4> ArgTys;
+      bool IsVarArg(false);
+      unsigned Idx = 1;
+      for (FuncArgTypeID TyID = ProtoTypes[Idx]; TyID != NoFuncArgType;
+           TyID = ProtoTypes[++Idx]) {
+        if (TyID == Ellip) {
+          // The ellipsis ends the protoype list so it must be followed by
+          // NoFuncArgType.
+          assert(ProtoTypes[Idx + 1] == NoFuncArgType);
+          IsVarArg = true;
+          break;
+        }
+        if (TyID == Same) {
+          ArgTy = LastTy;
+        } else {
+          ArgTy = convertToIRType(ProtoTypes[Idx], Ctx, TT, DL);
+          LastTy = ArgTy;
+        }
+        ArgTys.push_back(ArgTy);
+      }
+      return {FunctionType::get(RetTy, ArgTys, IsVarArg), AttributeList()};
+    }
+
     return {};
   }
 
