@@ -425,9 +425,6 @@ void RuntimeLibcallEmitter::emitGetInitRuntimeLibcallSignatures(
     }
     return Sig;
   };
-  
-  Signature NoFuncSig({StringRef("Void")});
-  SignatureTable.add(NoFuncSig);
 
   for (const RuntimeLibcall &LC : Libcalls.getRuntimeLibcallDefList())
     SignatureTable.add(GetSignature(LC.getDef()));
@@ -444,7 +441,6 @@ const FuncArgTypeID RTLIB::RuntimeLibcallsInfo::SignatureTable[] = {
   OS << R"(
 const uint16_t RTLIB::RuntimeLibcallsInfo::SignatureOffset[] = {
 )";
-  OS << "  " << SignatureTable.get(NoFuncSig) << ", //\n";
   for (const RuntimeLibcall &LC : Libcalls.getRuntimeLibcallDefList()) {
     const Record *LibcallDef = LC.getDef();
     OS << formatv("  {}, // {}\n",
